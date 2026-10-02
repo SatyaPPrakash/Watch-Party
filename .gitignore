@@ -1,6 +1,8 @@
 client/node_modules
 client/.env.example
 client/.env
+client/assets
+client/dist
 
 server/node_modules
 server/.env

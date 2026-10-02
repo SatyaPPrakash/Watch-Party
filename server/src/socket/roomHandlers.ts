@@ -69,6 +69,29 @@ export function registerRoomHandlers(
     io.to(code).emit("room:peer-updated", peer);
   });
 
+  // WebRTC signaling passthrough
+  socket.on("room:remote-mute", (targetId) => {
+    const code = socket.data.roomCode;
+    const room = rooms.get(code);
+    const target = room?.peers.get(targetId);
+    if (!target || !room) return;
+
+    target.micOn = false;
+    io.to(code).emit("room:peer-updated", target);
+    io.to(targetId).emit("room:you-were-muted");
+  });
+
+  socket.on("room:remote-hide-camera", (targetId) => {
+    const code = socket.data.roomCode;
+    const room = rooms.get(code);
+    const target = room?.peers.get(targetId);
+    if (!target || !room) return;
+
+    target.cameraOn = false;
+    io.to(code).emit("room:peer-updated", target);
+    io.to(targetId).emit("room:your-camera-was-hidden");
+  });
+
   socket.on("signal", ({ to, signal }) => {
     io.to(to).emit("signal", { from: socket.id, signal });
   });

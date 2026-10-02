@@ -4,8 +4,8 @@
 
 | # | Name | Status | Notes |
 |---|---|---|---|
-| 1 | Room shell | ✅ Built — pending your verification | WebRTC mesh, tiles, ErrorDialog, layout |
-| 2 | Direct Playback | ⬜ Not started | hls.js player, sync engine |
+| 1 | Room shell | ✅ Implemented — manual verification pending | Rooms, media tiles, WebRTC mesh, controls, responsive layouts |
+| 2 | Direct Playback | 🟡 Core implementation present — manual verification pending | MP4/HLS player, URL broadcast, sync engine, drift correction |
 | 3 | Upload → HLS | ⬜ Not started | ffmpeg transcode pipeline |
 | 4 | Tab Share mode | ⬜ Not started | getDisplayMedia, DRM messaging |
 | 5 | Polish | ⬜ Not started | Framer Motion pass, edge cases |
@@ -13,32 +13,40 @@
 ---
 
 ## Checkpoint 1 — Room Shell
-**Status**: ✅ Built  
+**Status**: ✅ Implemented; the manual checklist is still pending  
 **Branch/commit**: _fill in after push_
 
 ### What was built
 - Express + Socket.io server with in-memory room state
 - Room create/join with 6-char code
-- WebRTC mesh via `simple-peer` (signaling through Socket.io)
-- Local webcam/mic stream with per-track enable/disable toggles
-- Peer tiles with live video, name bar, mic/camera status indicators
+- WebRTC mesh via browser `RTCPeerConnection` with Google STUN servers and Socket.IO signaling
+- Camera and microphone requested independently; joining works if either track is available
+- Peer tiles with live video, name/status indicators, and remote mute/hide controls
 - Global `ErrorContext` + `<ErrorDialog>` (Radix Dialog + Framer Motion)
-- Responsive layout: sidebar on desktop, stacked on mobile
-- `VideoShell` placeholder for checkpoint 2
+- Responsive Tiles and Focus layouts, plus Cine mode
+- Sticky room header, shared Watch Party wordmark, and room-code copy control
 
 ### Known issues / deferred
-- No STUN/TURN config — WebRTC works on LAN/localhost; may fail across different networks (fix in CP2 or CP5)
+- STUN is configured, but there is no TURN relay; restrictive networks may prevent peer connections
 - No reconnect handling on refresh (by design, MVP)
 
 ---
 
 ## Checkpoint 2 — Direct Playback _(upcoming)_
-**Planned scope**:
-- URL input (`.mp4`, `.m3u8` direct links)
-- `hls.js` player integrated into `VideoShell`
-- Sync engine: controller designation, play/pause/seek broadcast via Socket.io
-- Drift correction: every 5s, snap clients >1.5s off
-- Quality indicator (current HLS level) shown on player
+## Checkpoint 2 — Direct Playback
+**Status**: 🟡 Core implementation present; manual two-client verification pending
+
+### What was built
+- URL input and playback for direct MP4 and HLS (`.m3u8`) links
+- hls.js adaptive quality selection and quality-level controls
+- Controller-based play, pause, and seek synchronization over Socket.IO
+- Playback URL and latest state stored per room for joiners
+- Drift correction every 5 seconds when clients differ by more than 1.5 seconds
+
+### Known issues / deferred
+- Controller handoff after the controller disconnects is not implemented
+- Media URLs must be browser-accessible; remote hosts must allow cross-origin media access
+- Playback sync, HLS quality switching, and late-join behavior have not been verified in a two-client session
 
 ---
 
@@ -51,3 +59,4 @@
 | CP1 | Render free tier for server | Free, persistent process, WebSocket support |
 | CP1 | Vercel for client | Free, zero-config Vite deploys |
 | CP1 | No file upload yet | Deferred to CP3; Google Drive links cover Direct Playback |
+| CP1 | Tiles, Focus, and Cine layouts | Participants can choose gallery or player-first room layouts |

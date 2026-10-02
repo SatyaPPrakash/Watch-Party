@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Film, ArrowRight, Users } from "lucide-react";
+import { ArrowRight, Users } from "lucide-react";
 import { useRoom } from "../context/RoomContext";
 import { useError } from "../context/ErrorContext";
+import { Brand } from "../components/Brand";
 
 interface HomeProps {
   onEnterRoom: () => void;
@@ -52,12 +53,8 @@ export function Home({ onEnterRoom }: HomeProps) {
         transition={{ duration: 0.3, ease: "easeOut" }}
         className="w-full max-w-sm"
       >
-        {/* Logo */}
         <div className="flex items-center gap-2.5 mb-8">
-          <div className="w-9 h-9 rounded-xl bg-accent/20 border border-accent/30 flex items-center justify-center text-accent">
-            <Film size={18} />
-          </div>
-          <span className="text-white font-semibold text-lg tracking-tight">watch party</span>
+          <Brand />
         </div>
 
         {/* Card */}

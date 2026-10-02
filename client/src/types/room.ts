@@ -24,9 +24,12 @@ export interface ServerToClientEvents {
   "room:peer-left": (peerId: string) => void;
   "room:peer-updated": (peer: Peer) => void;
   "room:error": (message: string) => void;
+  "room:you-were-muted": () => void;
+  "room:your-camera-was-hidden": () => void;
   signal: (payload: { from: string; signal: unknown }) => void;
   "sync:state": (payload: SyncPayload) => void;
   "sync:controller-changed": (peerId: string) => void;
+  "sync:load-url": (url: string) => void;
 }
 
 export interface ClientToServerEvents {
@@ -34,8 +37,11 @@ export interface ClientToServerEvents {
   "room:join": (payload: { code: string; displayName: string }, cb: (err: string | null) => void) => void;
   "room:toggle-camera": (cameraOn: boolean) => void;
   "room:toggle-mic": (micOn: boolean) => void;
+  "room:remote-mute": (targetId: string) => void;
+  "room:remote-hide-camera": (targetId: string) => void;
   signal: (payload: { to: string; signal: unknown }) => void;
   "sync:update": (payload: SyncPayload) => void;
   "sync:request-state": () => void;
   "sync:set-controller": (peerId: string) => void;
+  "sync:load-url": (url: string) => void;
 }

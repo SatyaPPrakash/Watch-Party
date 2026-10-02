@@ -12,7 +12,7 @@ interface QualityLevel {
 }
 
 export function VideoPlayer() {
-  const { socket, isController, controllerId, localPeer } = useRoom();
+  const { socket, isController, controllerId, localPeer, onLoadUrl } = useRoom();
   const { showError } = useError();
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -30,6 +30,7 @@ export function VideoPlayer() {
     const video = videoRef.current;
     if (!video) return;
 
+    // Destroy previous hls instance
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
@@ -49,8 +50,11 @@ export function VideoPlayer() {
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
-        setQualityLevels(data.levels.map((l, i) => ({ height: l.height, index: i })));
+        setQualityLevels(
+          data.levels.map((l, i) => ({ height: l.height, index: i }))
+        );
         setLoading(false);
+        // Non-controllers wait for sync:state before playing
         if (isController) video.play().catch(() => {});
       });
 
@@ -65,6 +69,7 @@ export function VideoPlayer() {
         }
       });
     } else {
+      // Native playback for plain .mp4 or browsers with native HLS (Safari)
       video.src = src;
       video.onloadedmetadata = () => setLoading(false);
       video.onerror = () => {
@@ -80,26 +85,45 @@ export function VideoPlayer() {
     if (!trimmed) return;
     setUrl(trimmed);
     loadUrl(trimmed);
-  }, [inputValue, loadUrl]);
+    // Broadcast to all peers so they load the same video
+    socket?.emit("sync:load-url", trimmed);
+  }, [inputValue, loadUrl, socket]);
+
+  // Non-controllers receive URL from controller (on join or when controller loads)
+  useEffect(() => {
+    if (isController) return;
+    const unsub = onLoadUrl((remoteUrl) => {
+      setUrl(remoteUrl);
+      loadUrl(remoteUrl);
+    });
+    return unsub;
+  }, [isController, onLoadUrl, loadUrl]);
 
   const handleQualityChange = useCallback((index: number) => {
     if (!hlsRef.current) return;
     hlsRef.current.currentLevel = index;
     setCurrentLevel(index);
+    // Broadcast seek to keep sync after quality switch
     broadcast();
   }, [broadcast]);
 
+  // When a new URL arrives via sync (late joiner scenario), load it
   useEffect(() => {
-    return () => { hlsRef.current?.destroy(); };
+    return () => {
+      hlsRef.current?.destroy();
+    };
   }, []);
 
   const noVideo = !url;
   const controllerName = controllerId
-    ? controllerId === localPeer?.id ? "you" : "the room host"
+    ? controllerId === localPeer?.id
+      ? "you"
+      : "the room host"
     : null;
 
   return (
     <div className="flex flex-col gap-3 w-full">
+      {/* URL input — only controller can load a new video */}
       {isController && (
         <div className="flex gap-2">
           <div className="relative flex-1">
@@ -123,17 +147,24 @@ export function VideoPlayer() {
         </div>
       )}
 
+      {/* Player */}
       <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-border group">
-        <video ref={videoRef} className="w-full h-full" playsInline />
+        <video
+          ref={videoRef}
+          className="w-full h-full"
+          playsInline
+        />
 
+        {/* Loading spinner */}
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60">
             <Loader2 size={32} className="text-white animate-spin" />
           </div>
         )}
 
+        {/* Empty state */}
         {noVideo && !loading && (
-          <div className="absolute inset-0 flex items-center justify-center text-zinc-600 select-none">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-zinc-600 select-none">
             <p className="text-sm">
               {isController
                 ? "Paste a video URL above to start"
@@ -144,6 +175,7 @@ export function VideoPlayer() {
           </div>
         )}
 
+        {/* Controls — visible on hover */}
         {!noVideo && !loading && (
           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <PlayerControls

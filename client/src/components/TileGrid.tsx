@@ -3,33 +3,39 @@ import { Mic, MicOff, Video, VideoOff } from "lucide-react";
 import { useRoom } from "../context/RoomContext";
 import { PeerTile } from "./PeerTile";
 
-export function TileGrid() {
+interface TileGridProps {
+  layout: "tiles" | "focus";
+  showParticipants?: boolean;
+}
+
+export function TileGrid({ layout, showParticipants = true }: TileGridProps) {
   const { localPeer, peers, localStream, peerStreams, cameraOn, micOn, toggleCamera, toggleMic } =
     useRoom();
   const hasAudioTrack = Boolean(localStream?.getAudioTracks().length);
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* Tile grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        <AnimatePresence>
-          {localPeer && (
-            <PeerTile
-              key={localPeer.id}
-              peer={{ ...localPeer, cameraOn, micOn }}
-              stream={localStream}
-              isLocal
-            />
-          )}
-          {peers.map((peer) => (
-            <PeerTile
-              key={peer.id}
-              peer={peer}
-              stream={peerStreams.get(peer.id) ?? null}
-            />
-          ))}
-        </AnimatePresence>
-      </div>
+    <div className="flex h-full min-h-0 flex-col gap-3">
+      {showParticipants && (
+        <div className={`grid min-h-0 gap-3 overflow-y-auto pr-1 ${layout === "tiles" ? "flex-1 grid-cols-1 sm:grid-cols-2 content-start" : "grid-cols-1"}`}>
+          <AnimatePresence>
+            {localPeer && (
+              <PeerTile
+                key={localPeer.id}
+                peer={{ ...localPeer, cameraOn, micOn }}
+                stream={localStream}
+                isLocal
+              />
+            )}
+            {peers.map((peer) => (
+              <PeerTile
+                key={peer.id}
+                peer={peer}
+                stream={peerStreams.get(peer.id) ?? null}
+              />
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Local controls */}
       <div className="flex items-center justify-center gap-3 pt-1">

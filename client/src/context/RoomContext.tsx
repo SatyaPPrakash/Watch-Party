@@ -8,14 +8,14 @@ import {
   ReactNode,
 } from "react";
 import { io, Socket } from "socket.io-client";
-import SimplePeer from "simple-peer";
+import { NativePeer } from "../webrtc/NativePeer";
 import { Peer, ServerToClientEvents, ClientToServerEvents } from "../types/room";
 import { useError } from "./ErrorContext";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
 
 interface PeerConnection {
-  peer: SimplePeer.Instance;
+  peer: NativePeer;
   stream: MediaStream | null;
 }
 
@@ -34,6 +34,9 @@ interface RoomContextValue {
   toggleMic: () => void;
   createRoom: (displayName: string) => Promise<string>;
   joinRoom: (code: string, displayName: string) => Promise<void>;
+  onLoadUrl: (cb: (url: string) => void) => () => void;
+  remoteMute: (targetId: string) => void;
+  remoteHideCamera: (targetId: string) => void;
 }
 
 const RoomContext = createContext<RoomContextValue | null>(null);
@@ -62,20 +65,35 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const initLocalStream = useCallback(async () => {
+    let videoStream: MediaStream | null = null;
+    let audioStream: MediaStream | null = null;
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      localStreamRef.current = stream;
-      setLocalStream(stream);
-      return stream;
+      videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
     } catch {
-      showError("Camera / Mic access denied", "Allow camera and microphone access to join a room.");
-      return null;
+      showError("Camera access denied", "Could not access your camera. You can still join but others won't see you.");
     }
+
+    try {
+      audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      showError("Mic access denied", "Could not access your microphone. You can still join but others won't hear you.");
+    }
+
+    if (!videoStream && !audioStream) return null;
+
+    const combined = new MediaStream();
+    videoStream?.getTracks().forEach((t) => combined.addTrack(t));
+    audioStream?.getTracks().forEach((t) => combined.addTrack(t));
+
+    localStreamRef.current = combined;
+    setLocalStream(combined);
+    return combined;
   }, [showError]);
 
   const createPeerConnection = useCallback(
     (peerId: string, initiator: boolean, stream: MediaStream) => {
-      const peer = new SimplePeer({ initiator, stream, trickle: false });
+      const peer = new NativePeer({ initiator, stream });
 
       peer.on("signal", (signal) => {
         socketRef.current?.emit("signal", { to: peerId, signal });
@@ -135,7 +153,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
       socket.on("signal", ({ from, signal }) => {
         const conn = peerConnectionsRef.current.get(from);
-        if (conn) conn.peer.signal(signal as SimplePeer.SignalData);
+        if (conn) conn.peer.signal(signal);
       });
 
       socket.on("room:error", (message) => {
@@ -144,6 +162,20 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
       socket.on("sync:controller-changed", (peerId) => {
         setControllerId(peerId);
+      });
+
+      socket.on("room:you-were-muted", () => {
+        const s = localStreamRef.current;
+        const track = s?.getAudioTracks()[0];
+        if (track) track.enabled = false;
+        setMicOn(false);
+      });
+
+      socket.on("room:your-camera-was-hidden", () => {
+        const s = localStreamRef.current;
+        const track = s?.getVideoTracks()[0];
+        if (track) track.enabled = false;
+        setCameraOn(false);
       });
     },
     [createPeerConnection, showError]
@@ -158,7 +190,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       setupSocketListeners(socket, stream);
 
       return new Promise((resolve) => {
-        socket.emit("room:create", displayName, (code) => resolve(code));
+        socket.emit("room:create", displayName, (code) => {
+          if (socket.id) setControllerId(socket.id);
+          resolve(code);
+        });
       });
     },
     [initLocalStream, getSocket, setupSocketListeners]
@@ -186,6 +221,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     },
     [initLocalStream, getSocket, setupSocketListeners, showError]
   );
+
+  const remoteMute = useCallback((targetId: string) => {
+    socketRef.current?.emit("room:remote-mute", targetId);
+  }, []);
+
+  const remoteHideCamera = useCallback((targetId: string) => {
+    socketRef.current?.emit("room:remote-hide-camera", targetId);
+  }, []);
+
+  const onLoadUrl = useCallback((cb: (url: string) => void) => {
+    const socket = socketRef.current;
+    if (!socket) return () => {};
+    socket.on("sync:load-url", cb);
+    return () => { socket.off("sync:load-url", cb); };
+  }, []);
 
   const toggleCamera = useCallback(() => {
     const stream = localStreamRef.current;
@@ -232,6 +282,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         toggleMic,
         createRoom,
         joinRoom,
+        onLoadUrl,
+        remoteMute,
+        remoteHideCamera,
       }}
     >
       {children}
