@@ -8,7 +8,7 @@ import {
   ReactNode,
 } from "react";
 import { io, Socket } from "socket.io-client";
-import SimplePeer from "simple-peer/simplepeer.min.js";
+import SimplePeer from "simple-peer";
 import { Peer, ServerToClientEvents, ClientToServerEvents } from "../types/room";
 import { useError } from "./ErrorContext";
 
@@ -28,6 +28,8 @@ interface RoomContextValue {
   peerStreams: Map<string, MediaStream>;
   cameraOn: boolean;
   micOn: boolean;
+  controllerId: string | null;
+  isController: boolean;
   toggleCamera: () => void;
   toggleMic: () => void;
   createRoom: (displayName: string) => Promise<string>;
@@ -50,6 +52,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const [peerStreams, setPeerStreams] = useState<Map<string, MediaStream>>(new Map());
   const [cameraOn, setCameraOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
+  const [controllerId, setControllerId] = useState<string | null>(null);
 
   const getSocket = useCallback(() => {
     if (!socketRef.current) {
@@ -59,50 +62,13 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const initLocalStream = useCallback(async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      showError(
-        "Camera unavailable",
-        "Camera access requires HTTPS or localhost. Open this app on a secure connection and try again."
-      );
-      return null;
-    }
-
-    let videoStream: MediaStream;
     try {
-      videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    } catch (error) {
-      const name = error instanceof DOMException ? error.name : "UnknownError";
-      const message =
-        name === "NotAllowedError" || name === "SecurityError"
-          ? "Allow camera access for this site in your browser settings, then try again."
-          : name === "NotFoundError"
-            ? "No camera was found. Connect a camera and try again."
-            : name === "NotReadableError"
-              ? "The camera is already in use by another app. Close it and try again."
-              : `Camera could not be started (${name}). Check your browser and device settings.`;
-      showError("Camera access unavailable", message);
-      return null;
-    }
-
-    let audioTracks: MediaStreamTrack[] = [];
-    try {
-      const audioStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-      audioTracks = audioStream.getAudioTracks();
-    } catch {
-      setMicOn(false);
-    }
-
-    try {
-      const stream = new MediaStream([...videoStream.getVideoTracks(), ...audioTracks]);
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       localStreamRef.current = stream;
       setLocalStream(stream);
-      setCameraOn(true);
-      setMicOn(audioTracks.length > 0);
       return stream;
-    } catch (error) {
-      videoStream.getTracks().forEach((track) => track.stop());
-      audioTracks.forEach((track) => track.stop());
-      showError("Media unavailable", "The camera stream could not be initialized. Try again.");
+    } catch {
+      showError("Camera / Mic access denied", "Allow camera and microphone access to join a room.");
       return null;
     }
   }, [showError]);
@@ -175,6 +141,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       socket.on("room:error", (message) => {
         showError("Room error", message);
       });
+
+      socket.on("sync:controller-changed", (peerId) => {
+        setControllerId(peerId);
+      });
     },
     [createPeerConnection, showError]
   );
@@ -208,6 +178,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
             showError("Couldn't join", err);
             reject(new Error(err));
           } else {
+            socket.emit("sync:request-state");
             resolve();
           }
         });
@@ -255,6 +226,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         peerStreams,
         cameraOn,
         micOn,
+        controllerId,
+        isController: !!socketRef.current && controllerId === socketRef.current.id,
         toggleCamera,
         toggleMic,
         createRoom,

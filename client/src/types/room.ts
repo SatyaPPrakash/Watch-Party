@@ -10,6 +10,14 @@ export interface RoomSnapshot {
   peers: Peer[];
 }
 
+export type PlaybackState = "playing" | "paused";
+
+export interface SyncPayload {
+  state: PlaybackState;
+  currentTime: number;
+  timestamp: number;
+}
+
 export interface ServerToClientEvents {
   "room:joined": (payload: { room: RoomSnapshot; peer: Peer }) => void;
   "room:peer-joined": (peer: Peer) => void;
@@ -17,6 +25,8 @@ export interface ServerToClientEvents {
   "room:peer-updated": (peer: Peer) => void;
   "room:error": (message: string) => void;
   signal: (payload: { from: string; signal: unknown }) => void;
+  "sync:state": (payload: SyncPayload) => void;
+  "sync:controller-changed": (peerId: string) => void;
 }
 
 export interface ClientToServerEvents {
@@ -25,4 +35,7 @@ export interface ClientToServerEvents {
   "room:toggle-camera": (cameraOn: boolean) => void;
   "room:toggle-mic": (micOn: boolean) => void;
   signal: (payload: { to: string; signal: unknown }) => void;
+  "sync:update": (payload: SyncPayload) => void;
+  "sync:request-state": () => void;
+  "sync:set-controller": (peerId: string) => void;
 }

@@ -1,5 +1,6 @@
 import { Server, Socket } from "socket.io";
 import { Room, Peer, ServerToClientEvents, ClientToServerEvents, RoomSnapshot } from "../types/room.js";
+import { clearRoomSyncState } from "./syncHandlers.js";
 
 const rooms = new Map<string, Room>();
 
@@ -68,7 +69,6 @@ export function registerRoomHandlers(
     io.to(code).emit("room:peer-updated", peer);
   });
 
-  // WebRTC signaling passthrough
   socket.on("signal", ({ to, signal }) => {
     io.to(to).emit("signal", { from: socket.id, signal });
   });
@@ -81,6 +81,9 @@ export function registerRoomHandlers(
     room.peers.delete(socket.id);
     socket.to(code).emit("room:peer-left", socket.id);
 
-    if (room.peers.size === 0) rooms.delete(code);
+    if (room.peers.size === 0) {
+      rooms.delete(code);
+      clearRoomSyncState(code);
+    }
   });
 }

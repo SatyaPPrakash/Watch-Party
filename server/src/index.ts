@@ -3,6 +3,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
 import { registerRoomHandlers } from "./socket/roomHandlers.js";
+import { registerSyncHandlers } from "./socket/syncHandlers.js";
 import { ServerToClientEvents, ClientToServerEvents } from "./types/room.js";
 
 const app = express();
@@ -21,6 +22,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 
 io.on("connection", (socket) => {
   registerRoomHandlers(io, socket);
+  registerSyncHandlers(io, socket);
 });
 
 const PORT = process.env.PORT || 4000;
