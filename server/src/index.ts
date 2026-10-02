@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import { registerRoomHandlers } from "./socket/roomHandlers.js";
 import { registerSyncHandlers } from "./socket/syncHandlers.js";
+import { createUploadRouter } from "./routes/upload.js";
 import { ServerToClientEvents, ClientToServerEvents } from "./types/room.js";
 
 const app = express();
@@ -19,6 +20,7 @@ app.use(cors({ origin: CLIENT_URL }));
 app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+app.use(createUploadRouter(io));
 
 io.on("connection", (socket) => {
   registerRoomHandlers(io, socket);

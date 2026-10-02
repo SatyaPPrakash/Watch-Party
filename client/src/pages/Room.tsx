@@ -3,11 +3,12 @@ import { Copy, Check, Eye, EyeOff, LayoutGrid, PanelRight } from "lucide-react";
 import { useState } from "react";
 import { useRoom } from "../context/RoomContext";
 import { Brand } from "../components/Brand";
+import { ScreenShareStage } from "../components/ScreenShareStage";
 import { VideoShell } from "../components/VideoShell";
 import { TileGrid } from "../components/TileGrid";
 
 export function Room() {
-  const { roomCode, peers, localPeer } = useRoom();
+  const { roomCode, peers, localPeer, peerStreams, screenSharerId, screenShareStream } = useRoom();
   const [copied, setCopied] = useState(false);
   const [tileLayout, setTileLayout] = useState<"tiles" | "focus">("tiles");
   const [cineMode, setCineMode] = useState(false);
@@ -20,6 +21,10 @@ export function Room() {
   };
 
   const totalPeers = (localPeer ? 1 : 0) + peers.length;
+  const screenSharer = peers.find((peer) => peer.id === screenSharerId);
+  const sharedStream = screenSharerId === localPeer?.id
+    ? screenShareStream
+    : screenSharerId ? peerStreams.get(screenSharerId) ?? null : null;
 
   return (
     <motion.div
@@ -89,7 +94,16 @@ export function Room() {
 
       <main className={`flex-1 min-h-0 flex flex-col gap-4 p-4 sm:p-6 overflow-y-auto lg:overflow-hidden ${cineMode ? "" : "lg:flex-row"}`}>
         <div className={`${cineMode ? "mx-auto w-full max-w-[1500px]" : tileLayout === "tiles" ? "lg:w-[42%] xl:w-[40%]" : "flex-1"} min-w-0 shrink-0`}>
-          <VideoShell />
+          <div className={screenSharerId ? "hidden" : "block"}>
+            <VideoShell />
+          </div>
+          {screenSharerId ? (
+            <ScreenShareStage
+              stream={sharedStream}
+              displayName={screenSharer?.displayName ?? localPeer?.displayName ?? "Participant"}
+              isLocal={screenSharerId === localPeer?.id}
+            />
+          ) : null}
         </div>
 
         {!cineMode && (

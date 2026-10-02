@@ -5,6 +5,7 @@ import { useRoom } from "../context/RoomContext";
 import { useError } from "../context/ErrorContext";
 import { useSyncEngine } from "../sync-engine/useSyncEngine";
 import { PlayerControls } from "./PlayerControls";
+import { UploadPanel } from "./UploadPanel";
 
 interface QualityLevel {
   height: number;
@@ -12,7 +13,7 @@ interface QualityLevel {
 }
 
 export function VideoPlayer() {
-  const { socket, isController, controllerId, localPeer, onLoadUrl } = useRoom();
+  const { socket, isController, controllerId, localPeer } = useRoom();
   const { showError } = useError();
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -23,6 +24,7 @@ export function VideoPlayer() {
   const [loading, setLoading] = useState(false);
   const [qualityLevels, setQualityLevels] = useState<QualityLevel[]>([]);
   const [currentLevel, setCurrentLevel] = useState(-1);
+  const [inputMode, setInputMode] = useState<"url" | "upload">("url");
 
   const { broadcast } = useSyncEngine({ socket, isController, videoRef });
 
@@ -30,7 +32,6 @@ export function VideoPlayer() {
     const video = videoRef.current;
     if (!video) return;
 
-    // Destroy previous hls instance
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
@@ -50,11 +51,8 @@ export function VideoPlayer() {
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
-        setQualityLevels(
-          data.levels.map((l, i) => ({ height: l.height, index: i }))
-        );
+        setQualityLevels(data.levels.map((l, i) => ({ height: l.height, index: i })));
         setLoading(false);
-        // Non-controllers wait for sync:state before playing
         if (isController) video.play().catch(() => {});
       });
 
@@ -69,7 +67,6 @@ export function VideoPlayer() {
         }
       });
     } else {
-      // Native playback for plain .mp4 or browsers with native HLS (Safari)
       video.src = src;
       video.onloadedmetadata = () => setLoading(false);
       video.onerror = () => {
@@ -85,89 +82,111 @@ export function VideoPlayer() {
     if (!trimmed) return;
     setUrl(trimmed);
     loadUrl(trimmed);
-    // Broadcast to all peers so they load the same video
     socket?.emit("sync:load-url", trimmed);
   }, [inputValue, loadUrl, socket]);
 
-  // Non-controllers receive URL from controller (on join or when controller loads)
+  const handleUploadReady = useCallback((hlsUrl: string) => {
+    setUrl(hlsUrl);
+    loadUrl(hlsUrl);
+    socket?.emit("sync:load-url", hlsUrl);
+  }, [loadUrl, socket]);
+
+  // Non-controllers receive URL from controller
   useEffect(() => {
     if (isController) return;
-    const unsub = onLoadUrl((remoteUrl) => {
+    const socket_ = socket;
+    if (!socket_) return;
+    const handler = (remoteUrl: string) => {
       setUrl(remoteUrl);
       loadUrl(remoteUrl);
-    });
-    return unsub;
-  }, [isController, onLoadUrl, loadUrl]);
+    };
+    socket_.on("sync:load-url", handler);
+    return () => { socket_.off("sync:load-url", handler); };
+  }, [isController, socket, loadUrl]);
 
   const handleQualityChange = useCallback((index: number) => {
     if (!hlsRef.current) return;
     hlsRef.current.currentLevel = index;
     setCurrentLevel(index);
-    // Broadcast seek to keep sync after quality switch
     broadcast();
   }, [broadcast]);
 
-  // When a new URL arrives via sync (late joiner scenario), load it
   useEffect(() => {
-    return () => {
-      hlsRef.current?.destroy();
-    };
+    return () => { hlsRef.current?.destroy(); };
   }, []);
 
   const noVideo = !url;
   const controllerName = controllerId
-    ? controllerId === localPeer?.id
-      ? "you"
-      : "the room host"
+    ? controllerId === localPeer?.id ? "you" : "the room host"
     : null;
 
   return (
     <div className="flex flex-col gap-3 w-full">
-      {/* URL input — only controller can load a new video */}
+      {/* Controller input area */}
       {isController && (
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Link size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-            <input
-              type="url"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleLoad()}
-              placeholder="Paste a .mp4 or .m3u8 URL"
-              className="w-full bg-surface border border-border rounded-xl pl-8 pr-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-accent/50 transition-colors"
-            />
+        <div className="flex flex-col gap-2">
+          {/* Mode tabs */}
+          <div className="flex bg-surface-raised border border-border rounded-xl p-1 gap-1 w-fit">
+            <button
+              onClick={() => setInputMode("url")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                inputMode === "url" ? "bg-surface-overlay text-white" : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              URL
+            </button>
+            <button
+              onClick={() => setInputMode("upload")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                inputMode === "upload" ? "bg-surface-overlay text-white" : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              Upload file
+            </button>
           </div>
-          <button
-            onClick={handleLoad}
-            disabled={!inputValue.trim()}
-            className="px-4 py-2.5 rounded-xl bg-accent hover:bg-accent-dim text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Load
-          </button>
+
+          {inputMode === "url" ? (
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Link size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+                <input
+                  type="url"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleLoad()}
+                  placeholder="Paste a .mp4 or .m3u8 URL"
+                  className="w-full bg-surface border border-border rounded-xl pl-8 pr-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-accent/50 transition-colors"
+                />
+              </div>
+              <button
+                onClick={handleLoad}
+                disabled={!inputValue.trim()}
+                className="px-4 py-2.5 rounded-xl bg-accent hover:bg-accent-dim text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Load
+              </button>
+            </div>
+          ) : (
+            <UploadPanel onReady={handleUploadReady} />
+          )}
         </div>
       )}
 
       {/* Player */}
       <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-border group">
-        <video
-          ref={videoRef}
-          className="w-full h-full"
-          playsInline
-        />
+        <video ref={videoRef} className="w-full h-full" playsInline />
 
-        {/* Loading spinner */}
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60">
             <Loader2 size={32} className="text-white animate-spin" />
           </div>
         )}
 
-        {/* Empty state */}
         {noVideo && !loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-zinc-600 select-none">
-            <p className="text-sm">
+          <div className="absolute inset-0 flex items-center justify-center text-zinc-600 select-none">
+            <p className="text-sm text-center px-6">
               {isController
-                ? "Paste a video URL above to start"
+                ? "Paste a URL or upload a file above to start"
                 : controllerName
                 ? `Waiting for ${controllerName} to load a video…`
                 : "Waiting for someone to load a video…"}
@@ -175,7 +194,6 @@ export function VideoPlayer() {
           </div>
         )}
 
-        {/* Controls — visible on hover */}
         {!noVideo && !loading && (
           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <PlayerControls

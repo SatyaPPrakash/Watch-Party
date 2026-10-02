@@ -12,7 +12,7 @@ function generateCode(): string {
 }
 
 function toSnapshot(room: Room): RoomSnapshot {
-  return { code: room.code, peers: Array.from(room.peers.values()) };
+  return { code: room.code, peers: Array.from(room.peers.values()), screenSharerId: room.screenSharerId };
 }
 
 export function registerRoomHandlers(
@@ -24,7 +24,7 @@ export function registerRoomHandlers(
     while (rooms.has(code)) code = generateCode();
 
     const peer: Peer = { id: socket.id, displayName, cameraOn: true, micOn: true };
-    const room: Room = { code, peers: new Map([[socket.id, peer]]), createdAt: Date.now() };
+    const room: Room = { code, peers: new Map([[socket.id, peer]]), screenSharerId: null, createdAt: Date.now() };
 
     rooms.set(code, room);
     socket.join(code);
@@ -69,6 +69,24 @@ export function registerRoomHandlers(
     io.to(code).emit("room:peer-updated", peer);
   });
 
+  socket.on("room:screen-share", (isSharing) => {
+    const code = socket.data.roomCode;
+    const room = rooms.get(code);
+    if (!room) return;
+
+    if (isSharing) {
+      if (room.screenSharerId && room.screenSharerId !== socket.id) {
+        socket.emit("room:error", "Another participant is already sharing their screen.");
+        socket.emit("room:screen-share-changed", room.screenSharerId);
+        return;
+      }
+      room.screenSharerId = socket.id;
+    } else if (room.screenSharerId === socket.id) {
+      room.screenSharerId = null;
+    }
+    io.to(code).emit("room:screen-share-changed", room.screenSharerId);
+  });
+
   // WebRTC signaling passthrough
   socket.on("room:remote-mute", (targetId) => {
     const code = socket.data.roomCode;
@@ -102,6 +120,10 @@ export function registerRoomHandlers(
     if (!room) return;
 
     room.peers.delete(socket.id);
+    if (room.screenSharerId === socket.id) {
+      room.screenSharerId = null;
+      socket.to(code).emit("room:screen-share-changed", null);
+    }
     socket.to(code).emit("room:peer-left", socket.id);
 
     if (room.peers.size === 0) {

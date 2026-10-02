@@ -26,12 +26,16 @@ interface RoomContextValue {
   peers: Peer[];
   localStream: MediaStream | null;
   peerStreams: Map<string, MediaStream>;
+  screenSharerId: string | null;
+  screenShareStream: MediaStream | null;
   cameraOn: boolean;
   micOn: boolean;
   controllerId: string | null;
   isController: boolean;
   toggleCamera: () => void;
   toggleMic: () => void;
+  startScreenShare: () => Promise<void>;
+  stopScreenShare: () => Promise<void>;
   createRoom: (displayName: string) => Promise<string>;
   joinRoom: (code: string, displayName: string) => Promise<void>;
   onLoadUrl: (cb: (url: string) => void) => () => void;
@@ -46,6 +50,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const screenShareStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, PeerConnection>>(new Map());
 
   const [roomCode, setRoomCode] = useState<string | null>(null);
@@ -53,6 +58,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const [peers, setPeers] = useState<Peer[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peerStreams, setPeerStreams] = useState<Map<string, MediaStream>>(new Map());
+  const [screenSharerId, setScreenSharerId] = useState<string | null>(null);
+  const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
   const [cameraOn, setCameraOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
   const [controllerId, setControllerId] = useState<string | null>(null);
@@ -80,8 +87,6 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       showError("Mic access denied", "Could not access your microphone. You can still join but others won't hear you.");
     }
 
-    if (!videoStream && !audioStream) return null;
-
     const combined = new MediaStream();
     videoStream?.getTracks().forEach((t) => combined.addTrack(t));
     audioStream?.getTracks().forEach((t) => combined.addTrack(t));
@@ -93,7 +98,13 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
   const createPeerConnection = useCallback(
     (peerId: string, initiator: boolean, stream: MediaStream) => {
-      const peer = new NativePeer({ initiator, stream });
+      const presentation = screenShareStreamRef.current;
+      const outgoingStream = new MediaStream();
+      const videoTrack = presentation?.getVideoTracks()[0] ?? stream.getVideoTracks()[0];
+      const audioTrack = presentation?.getAudioTracks()[0] ?? stream.getAudioTracks()[0];
+      if (videoTrack) outgoingStream.addTrack(videoTrack);
+      if (audioTrack) outgoingStream.addTrack(audioTrack);
+      const peer = new NativePeer({ initiator, stream: outgoingStream });
 
       peer.on("signal", (signal) => {
         socketRef.current?.emit("signal", { to: peerId, signal });
@@ -125,6 +136,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     (socket: Socket<ServerToClientEvents, ClientToServerEvents>, stream: MediaStream) => {
       socket.on("room:joined", ({ room, peer }) => {
         setRoomCode(room.code);
+        setScreenSharerId(room.screenSharerId);
         setLocalPeer(peer);
         const others = room.peers.filter((p) => p.id !== peer.id);
         setPeers(others);
@@ -137,6 +149,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       });
 
       socket.on("room:peer-left", (peerId) => {
+        setScreenSharerId((current) => current === peerId ? null : current);
         setPeers((prev) => prev.filter((p) => p.id !== peerId));
         peerConnectionsRef.current.get(peerId)?.peer.destroy();
         peerConnectionsRef.current.delete(peerId);
@@ -160,13 +173,17 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         showError("Room error", message);
       });
 
+      socket.on("room:screen-share-changed", (peerId) => {
+        setScreenSharerId(peerId);
+      });
+
       socket.on("sync:controller-changed", (peerId) => {
         setControllerId(peerId);
       });
 
       socket.on("room:you-were-muted", () => {
-        const s = localStreamRef.current;
-        const track = s?.getAudioTracks()[0];
+        const track = screenShareStreamRef.current?.getAudioTracks()[0]
+          ?? localStreamRef.current?.getAudioTracks()[0];
         if (track) track.enabled = false;
         setMicOn(false);
       });
@@ -230,6 +247,83 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     socketRef.current?.emit("room:remote-hide-camera", targetId);
   }, []);
 
+  const stopScreenShare = useCallback(async () => {
+    const presentation = screenShareStreamRef.current;
+    if (!presentation) return;
+
+    screenShareStreamRef.current = null;
+    const cameraTrack = localStreamRef.current?.getVideoTracks()[0] ?? null;
+    const microphoneTrack = localStreamRef.current?.getAudioTracks()[0] ?? null;
+    await Promise.all(Array.from(peerConnectionsRef.current.values(), async ({ peer }) => {
+      await Promise.all([
+        peer.replaceTrack("video", cameraTrack).catch(() => {}),
+        peer.replaceTrack("audio", microphoneTrack).catch(() => {}),
+      ]);
+    }));
+
+    presentation.getTracks().forEach((track) => track.stop());
+    setScreenShareStream(null);
+    setScreenSharerId(null);
+    socketRef.current?.emit("room:screen-share", false);
+  }, []);
+
+  const startScreenShare = useCallback(async () => {
+    const socket = socketRef.current;
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      showError("Screen sharing unavailable", "Use a browser that supports screen capture over a secure connection.");
+      return;
+    }
+    if (!socket?.connected || !socket.id) {
+      showError("Room disconnected", "Reconnect to the room before sharing your screen.");
+      return;
+    }
+    if (screenSharerId && screenSharerId !== socket.id) {
+      showError("Screen already in use", "Another participant is already sharing their screen.");
+      return;
+    }
+    if (screenShareStreamRef.current) return;
+
+    let presentation: MediaStream;
+    try {
+      presentation = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 30, max: 30 } },
+        audio: true,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "NotAllowedError") return;
+      showError("Screen share failed", error instanceof Error ? error.message : "Could not capture this screen.");
+      return;
+    }
+
+    const videoTrack = presentation.getVideoTracks()[0];
+    if (!videoTrack) {
+      presentation.getTracks().forEach((track) => track.stop());
+      showError("Screen share failed", "The selected source did not provide a video track.");
+      return;
+    }
+
+    screenShareStreamRef.current = presentation;
+    setScreenShareStream(presentation);
+    const audioTrack = presentation.getAudioTracks()[0];
+    if (audioTrack) {
+      audioTrack.enabled = localStreamRef.current?.getAudioTracks()[0]?.enabled ?? true;
+    }
+    try {
+      await Promise.all(Array.from(peerConnectionsRef.current.values(), async ({ peer }) => {
+        await peer.replaceTrack("video", videoTrack);
+        if (audioTrack) await peer.replaceTrack("audio", audioTrack);
+      }));
+    } catch {
+      await stopScreenShare();
+      showError("Screen share failed", "Could not send the selected source to everyone in the room.");
+      return;
+    }
+
+    setScreenSharerId(socket.id);
+    socket.emit("room:screen-share", true);
+    videoTrack.addEventListener("ended", () => void stopScreenShare(), { once: true });
+  }, [screenSharerId, showError, stopScreenShare]);
+
   const onLoadUrl = useCallback((cb: (url: string) => void) => {
     const socket = socketRef.current;
     if (!socket) return () => {};
@@ -248,9 +342,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleMic = useCallback(() => {
-    const stream = localStreamRef.current;
-    if (!stream) return;
-    const track = stream.getAudioTracks()[0];
+    const track = screenShareStreamRef.current?.getAudioTracks()[0]
+      ?? localStreamRef.current?.getAudioTracks()[0];
     if (!track) return;
     track.enabled = !track.enabled;
     setMicOn(track.enabled);
@@ -260,6 +353,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return () => {
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      screenShareStreamRef.current?.getTracks().forEach((t) => t.stop());
       peerConnectionsRef.current.forEach(({ peer }) => peer.destroy());
       socketRef.current?.disconnect();
     };
@@ -274,12 +368,16 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         peers,
         localStream,
         peerStreams,
+        screenSharerId,
+        screenShareStream,
         cameraOn,
         micOn,
         controllerId,
         isController: !!socketRef.current && controllerId === socketRef.current.id,
         toggleCamera,
         toggleMic,
+        startScreenShare,
+        stopScreenShare,
         createRoom,
         joinRoom,
         onLoadUrl,

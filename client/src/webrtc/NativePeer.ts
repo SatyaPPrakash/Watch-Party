@@ -16,22 +16,27 @@ export class NativePeer {
   private initiator: boolean;
   private handlers: Partial<PeerEvents> = {};
   private destroyed = false;
+  private senders = new Map<"audio" | "video", RTCRtpSender>();
+  private remoteStream = new MediaStream();
 
   constructor(opts: { initiator: boolean; stream?: MediaStream }) {
     this.initiator = opts.initiator;
     this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-    // Add local tracks
-    if (opts.stream) {
-      opts.stream.getTracks().forEach((track) => {
-        this.pc.addTrack(track, opts.stream!);
-      });
+    for (const kind of ["audio", "video"] as const) {
+      const track = opts.stream?.getTracks().find((candidate) => candidate.kind === kind);
+      const sender = track && opts.stream
+        ? this.pc.addTrack(track, opts.stream)
+        : this.pc.addTransceiver(kind, { direction: "sendrecv" }).sender;
+      this.senders.set(kind, sender);
     }
 
-    // Receive remote stream
-    this.pc.ontrack = (e) => {
-      const stream = e.streams[0];
-      if (stream) this.handlers.stream?.(stream);
+    this.pc.ontrack = (event) => {
+      const stream = event.streams[0] ?? this.remoteStream;
+      if (!event.streams[0] && !stream.getTracks().some((track) => track.id === event.track.id)) {
+        stream.addTrack(event.track);
+      }
+      this.handlers.stream?.(stream);
     };
 
     // ICE candidate → send as signal
@@ -86,6 +91,12 @@ export class NativePeer {
     } catch (err) {
       this.handlers.error?.(err as Error);
     }
+  }
+
+  replaceTrack(kind: "audio" | "video", track: MediaStreamTrack | null) {
+    const sender = this.senders.get(kind);
+    if (!sender) return Promise.reject(new Error(`No ${kind} sender is available`));
+    return sender.replaceTrack(track);
   }
 
   on<K extends keyof PeerEvents>(event: K, cb: PeerEvents[K]) {

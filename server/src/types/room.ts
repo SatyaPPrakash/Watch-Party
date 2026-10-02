@@ -8,6 +8,7 @@ export interface Peer {
 export interface Room {
   code: string;
   peers: Map<string, Peer>;
+  screenSharerId: string | null;
   createdAt: number;
 }
 
@@ -26,6 +27,7 @@ export interface ClientToServerEvents {
   "room:toggle-mic": (micOn: boolean) => void;
   "room:remote-mute": (targetId: string) => void;
   "room:remote-hide-camera": (targetId: string) => void;
+  "room:screen-share": (isSharing: boolean) => void;
   "signal": (payload: { to: string; signal: unknown }) => void;
   "sync:update": (payload: SyncPayload) => void;
   "sync:request-state": () => void;
@@ -41,13 +43,18 @@ export interface ServerToClientEvents {
   "room:error": (message: string) => void;
   "room:you-were-muted": () => void;
   "room:your-camera-was-hidden": () => void;
+  "room:screen-share-changed": (peerId: string | null) => void;
   "signal": (payload: { from: string; signal: unknown }) => void;
   "sync:state": (payload: SyncPayload) => void;
   "sync:controller-changed": (peerId: string) => void;
   "sync:load-url": (url: string) => void;
+  "upload:progress": (payload: { jobId: string; percent: number; status: string }) => void;
+  "upload:ready": (payload: { jobId: string; hlsUrl: string }) => void;
+  "upload:error": (payload: { jobId: string; message: string }) => void;
 }
 
 export interface RoomSnapshot {
   code: string;
   peers: Peer[];
+  screenSharerId: string | null;
 }
