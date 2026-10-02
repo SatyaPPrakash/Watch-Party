@@ -11,17 +11,25 @@ export function ScreenShareStage({ stream, displayName, isLocal }: ScreenShareSt
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
+    if (isLocal) return;
     const video = videoRef.current;
     if (!video) return;
     video.srcObject = stream;
     if (stream) video.play().catch(() => {});
     return () => { video.srcObject = null; };
-  }, [stream]);
+  }, [stream, isLocal]);
 
   return (
     <div className="relative mx-auto aspect-video w-full overflow-hidden rounded-xl border border-border bg-black">
-      <video ref={videoRef} autoPlay playsInline muted={isLocal} className="h-full w-full object-contain" />
-      {!stream && (
+      {!isLocal && <video ref={videoRef} autoPlay playsInline className="h-full w-full object-contain" />}
+      {isLocal && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center text-zinc-300">
+          <Monitor size={30} className="text-emerald-300" />
+          <span className="text-sm">Your screen is being sent live to the room.</span>
+          <span className="text-xs text-zinc-500">Keep the source window open; use the People control to see your friends.</span>
+        </div>
+      )}
+      {!isLocal && !stream && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-zinc-400">
           <Monitor size={28} />
           <span className="text-sm">Connecting to {displayName}&apos;s shared screen…</span>

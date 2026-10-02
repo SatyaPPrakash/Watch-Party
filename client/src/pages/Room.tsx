@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Copy, Check, Eye, EyeOff, LayoutGrid, PanelRight } from "lucide-react";
+import { Copy, Check, Eye, EyeOff, LayoutGrid, PanelRight, UsersRound } from "lucide-react";
 import { useState } from "react";
 import { useRoom } from "../context/RoomContext";
 import { Brand } from "../components/Brand";
@@ -12,6 +12,7 @@ export function Room() {
   const [copied, setCopied] = useState(false);
   const [tileLayout, setTileLayout] = useState<"tiles" | "focus">("tiles");
   const [cineMode, setCineMode] = useState(false);
+  const [showPeopleWhileSharing, setShowPeopleWhileSharing] = useState(true);
 
   const copyCode = () => {
     if (!roomCode) return;
@@ -25,6 +26,7 @@ export function Room() {
   const sharedStream = screenSharerId === localPeer?.id
     ? screenShareStream
     : screenSharerId ? peerStreams.get(screenSharerId) ?? null : null;
+  const showParticipantSidebar = !cineMode && (!screenSharerId || showPeopleWhileSharing);
 
   return (
     <motion.div
@@ -80,6 +82,24 @@ export function Room() {
             {cineMode ? <Eye size={14} /> : <EyeOff size={14} />}
             <span className="hidden sm:inline">{cineMode ? "Show tiles" : "Cine mode"}</span>
           </button>
+          {screenSharerId && (
+            <button
+              onClick={() => {
+                if (showParticipantSidebar) {
+                  setShowPeopleWhileSharing(false);
+                } else {
+                  setCineMode(false);
+                  setShowPeopleWhileSharing(true);
+                }
+              }}
+              aria-pressed={showParticipantSidebar}
+              title={showParticipantSidebar ? "Hide participants" : "Show participants"}
+              className="flex items-center gap-1.5 rounded-xl border border-border bg-surface-raised px-2.5 py-2 text-xs text-zinc-400 transition-colors hover:text-white"
+            >
+              <UsersRound size={14} />
+              <span className="hidden sm:inline">{showParticipantSidebar ? "Hide people" : "Show people"}</span>
+            </button>
+          )}
           {roomCode && (
             <button
               onClick={copyCode}
@@ -92,8 +112,8 @@ export function Room() {
         </div>
       </header>
 
-      <main className={`flex-1 min-h-0 flex flex-col gap-4 p-4 sm:p-6 overflow-y-auto lg:overflow-hidden ${cineMode ? "" : "lg:flex-row"}`}>
-        <div className={`${cineMode ? "mx-auto w-full max-w-[1500px]" : tileLayout === "tiles" ? "lg:w-[42%] xl:w-[40%]" : "flex-1"} min-w-0 shrink-0`}>
+      <main className={`flex-1 min-h-0 flex flex-col gap-4 p-4 sm:p-6 overflow-y-auto lg:overflow-hidden ${showParticipantSidebar ? "lg:flex-row" : ""}`}>
+        <div className={`${showParticipantSidebar ? tileLayout === "tiles" ? "lg:w-[42%] xl:w-[40%]" : "flex-1" : "mx-auto w-full max-w-[1500px]"} min-w-0 shrink-0`}>
           <div className={screenSharerId ? "hidden" : "block"}>
             <VideoShell />
           </div>
@@ -106,12 +126,12 @@ export function Room() {
           ) : null}
         </div>
 
-        {!cineMode && (
+        {showParticipantSidebar && (
           <div className={`${tileLayout === "tiles" ? "flex-1 min-h-0" : "lg:w-72 xl:w-80"} min-w-0 shrink-0`}>
             <TileGrid layout={tileLayout} />
           </div>
         )}
-        {cineMode && <TileGrid layout={tileLayout} showParticipants={false} />}
+        {!showParticipantSidebar && <TileGrid layout={tileLayout} showParticipants={false} />}
       </main>
     </motion.div>
   );

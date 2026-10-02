@@ -13,6 +13,7 @@ export interface Room {
 }
 
 export type PlaybackState = "playing" | "paused";
+export type PlaybackAction = "play" | "pause";
 
 export interface SyncPayload {
   state: PlaybackState;
@@ -30,6 +31,7 @@ export interface ClientToServerEvents {
   "room:screen-share": (isSharing: boolean) => void;
   "signal": (payload: { to: string; signal: unknown }) => void;
   "sync:update": (payload: SyncPayload) => void;
+  "sync:playback-request": (action: PlaybackAction) => void;
   "sync:request-state": () => void;
   "sync:set-controller": (peerId: string) => void;
   "sync:load-url": (url: string) => void;
@@ -46,6 +48,7 @@ export interface ServerToClientEvents {
   "room:screen-share-changed": (peerId: string | null) => void;
   "signal": (payload: { from: string; signal: unknown }) => void;
   "sync:state": (payload: SyncPayload) => void;
+  "sync:playback-request": (action: PlaybackAction) => void;
   "sync:controller-changed": (peerId: string) => void;
   "sync:load-url": (url: string) => void;
   "upload:progress": (payload: { jobId: string; percent: number; status: string }) => void;

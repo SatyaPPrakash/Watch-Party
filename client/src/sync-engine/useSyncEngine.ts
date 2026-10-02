@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Socket } from "socket.io-client";
-import { ServerToClientEvents, ClientToServerEvents, SyncPayload } from "../types/room";
+import { ServerToClientEvents, ClientToServerEvents, PlaybackAction, SyncPayload } from "../types/room";
 
 const DRIFT_THRESHOLD = 1.5;
 const DRIFT_CHECK_MS = 5000;
@@ -61,6 +61,40 @@ export function useSyncEngine({ socket, isController, videoRef }: UseSyncEngineO
     }
   }, [videoRef]);
 
+  const requestPlayback = useCallback((action: PlaybackAction) => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isController) {
+      if (action === "play") video.play().catch(() => {});
+      else video.pause();
+      return;
+    }
+
+    if (action === "play") {
+      const lastState = lastStateRef.current;
+      if (lastState?.state === "paused") video.currentTime = lastState.currentTime;
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+    socket?.emit("sync:playback-request", action);
+  }, [isController, socket, videoRef]);
+
+  useEffect(() => {
+    if (!socket || !isController) return;
+
+    const handleRequest = (action: PlaybackAction) => {
+      const video = videoRef.current;
+      if (!video) return;
+      if (action === "play") video.play().catch(() => {});
+      else video.pause();
+    };
+
+    socket.on("sync:playback-request", handleRequest);
+    return () => { socket.off("sync:playback-request", handleRequest); };
+  }, [socket, isController, videoRef]);
+
   useEffect(() => {
     if (!socket) return;
 
@@ -100,5 +134,5 @@ export function useSyncEngine({ socket, isController, videoRef }: UseSyncEngineO
     };
   }, [isController, applyState, videoRef]);
 
-  return { broadcast };
+  return { broadcast, requestPlayback };
 }

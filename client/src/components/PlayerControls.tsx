@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Play, Pause, Volume2, VolumeX, Maximize } from "lucide-react";
+import { PlaybackAction } from "../types/room";
 
 interface PlayerControlsProps {
   videoRef: React.RefObject<HTMLVideoElement>;
@@ -7,6 +8,7 @@ interface PlayerControlsProps {
   qualityLevels: { height: number; index: number }[];
   currentLevel: number;
   onQualityChange: (index: number) => void;
+  onPlaybackRequest: (action: PlaybackAction) => void;
 }
 
 function formatTime(s: number): string {
@@ -22,6 +24,7 @@ export function PlayerControls({
   qualityLevels,
   currentLevel,
   onQualityChange,
+  onPlaybackRequest,
 }: PlayerControlsProps) {
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -56,9 +59,9 @@ export function PlayerControls({
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
-    if (!video || !isController) return;
-    video.paused ? video.play() : video.pause();
-  }, [videoRef, isController]);
+    if (!video) return;
+    onPlaybackRequest(video.paused ? "play" : "pause");
+  }, [videoRef, onPlaybackRequest]);
 
   const toggleMute = useCallback(() => {
     const video = videoRef.current;
@@ -107,8 +110,8 @@ export function PlayerControls({
       <div className="flex items-center gap-3">
         <button
           onClick={togglePlay}
-          disabled={!isController}
-          className="text-white hover:text-white/80 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="text-white hover:text-white/80 transition-colors"
+          title={isController ? "Control playback" : "Request playback from host"}
         >
           {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
         </button>

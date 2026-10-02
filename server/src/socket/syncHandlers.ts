@@ -1,5 +1,5 @@
 import { Server, Socket } from "socket.io";
-import { ServerToClientEvents, ClientToServerEvents, SyncPayload } from "../types/room.js";
+import { ServerToClientEvents, ClientToServerEvents, PlaybackAction, SyncPayload } from "../types/room.js";
 
 // Last known playback state per room — used to sync late joiners
 const roomSyncState = new Map<string, SyncPayload>();
@@ -32,6 +32,13 @@ export function registerSyncHandlers(
     socket.to(code).emit("sync:state", stamped);
   });
 
+  socket.on("sync:playback-request", (action: PlaybackAction) => {
+    const code = socket.data.roomCode;
+    const controller = code ? roomController.get(code) : undefined;
+    if (!controller || controller === socket.id || (action !== "play" && action !== "pause")) return;
+    io.to(controller).emit("sync:playback-request", action);
+  });
+
   // Controller broadcasts a URL load to all peers
   socket.on("sync:load-url", (url: string) => {
     const code = socket.data.roomCode;
@@ -62,6 +69,11 @@ export function registerSyncHandlers(
   socket.on("sync:set-controller", (peerId) => {
     const code = socket.data.roomCode;
     if (!code) return;
+    const room = io.sockets.adapter.rooms.get(code);
+    const currentController = roomController.get(code);
+    if (!room?.has(peerId)) return;
+    if (currentController && currentController !== socket.id) return;
+    if (!currentController && peerId !== socket.id) return;
 
     roomController.set(code, peerId);
     io.to(code).emit("sync:controller-changed", peerId);

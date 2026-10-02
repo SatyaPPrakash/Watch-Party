@@ -26,7 +26,7 @@ export function VideoPlayer() {
   const [currentLevel, setCurrentLevel] = useState(-1);
   const [inputMode, setInputMode] = useState<"url" | "upload">("url");
 
-  const { broadcast } = useSyncEngine({ socket, isController, videoRef });
+  const { broadcast, requestPlayback } = useSyncEngine({ socket, isController, videoRef });
 
   const loadUrl = useCallback((src: string) => {
     const video = videoRef.current;
@@ -202,6 +202,7 @@ export function VideoPlayer() {
               qualityLevels={qualityLevels}
               currentLevel={currentLevel}
               onQualityChange={handleQualityChange}
+              onPlaybackRequest={requestPlayback}
             />
           </div>
         )}

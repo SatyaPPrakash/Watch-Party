@@ -208,7 +208,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
       return new Promise((resolve) => {
         socket.emit("room:create", displayName, (code) => {
-          if (socket.id) setControllerId(socket.id);
+          if (socket.id) {
+            setControllerId(socket.id);
+            socket.emit("sync:set-controller", socket.id);
+          }
           resolve(code);
         });
       });
