@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Hls from "hls.js";
-import { Link, Loader2 } from "lucide-react";
+import { Link, Loader2, Maximize } from "lucide-react";
 import { useRoom } from "../context/RoomContext";
 import { useError } from "../context/ErrorContext";
 import { useSyncEngine } from "../sync-engine/useSyncEngine";
@@ -17,6 +17,7 @@ export function VideoPlayer() {
   const { showError } = useError();
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const playerFrameRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
 
   const [url, setUrl] = useState("");
@@ -111,6 +112,16 @@ export function VideoPlayer() {
     broadcast();
   }, [broadcast]);
 
+  const toggleFullscreen = useCallback(() => {
+    const frame = playerFrameRef.current;
+    if (!frame) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void frame.requestFullscreen();
+    }
+  }, []);
+
   useEffect(() => {
     return () => { hlsRef.current?.destroy(); };
   }, []);
@@ -173,7 +184,7 @@ export function VideoPlayer() {
       )}
 
       {/* Player */}
-      <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-border group">
+      <div ref={playerFrameRef} className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-border group">
         <video ref={videoRef} className="w-full h-full" playsInline />
 
         {loading && (
@@ -195,7 +206,18 @@ export function VideoPlayer() {
         )}
 
         {!noVideo && !loading && (
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <button
+            onClick={toggleFullscreen}
+            title="Fullscreen"
+            className="absolute right-3 top-3 z-20 flex items-center gap-2 rounded-lg border border-white/15 bg-black/65 px-3 py-2 text-xs font-medium text-white opacity-100 backdrop-blur transition-opacity hover:bg-black/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+          >
+            <Maximize size={14} />
+            <span>Fullscreen</span>
+          </button>
+        )}
+
+        {!noVideo && !loading && (
+          <div className="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
             <PlayerControls
               videoRef={videoRef}
               isController={isController}

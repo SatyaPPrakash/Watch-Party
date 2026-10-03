@@ -16,7 +16,7 @@ export function App() {
         {view === "home" ? (
           <Home onEnterRoom={() => setView("room")} />
         ) : (
-          <Room />
+          <Room onLeaveRoom={() => setView("home")} />
         )}
         <ErrorDialog />
       </RoomProvider>

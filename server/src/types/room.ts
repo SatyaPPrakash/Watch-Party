@@ -8,6 +8,7 @@ export interface Peer {
 export interface Room {
   code: string;
   peers: Map<string, Peer>;
+  hostId: string;
   screenSharerId: string | null;
   createdAt: number;
 }
@@ -24,6 +25,9 @@ export interface SyncPayload {
 export interface ClientToServerEvents {
   "room:create": (displayName: string, cb: (code: string) => void) => void;
   "room:join": (payload: { code: string; displayName: string }, cb: (err: string | null) => void) => void;
+  "room:approve-join": (requestId: string) => void;
+  "room:deny-join": (requestId: string) => void;
+  "room:cancel-join": (requestId: string) => void;
   "room:toggle-camera": (cameraOn: boolean) => void;
   "room:toggle-mic": (micOn: boolean) => void;
   "room:remote-mute": (targetId: string) => void;
@@ -39,6 +43,10 @@ export interface ClientToServerEvents {
 
 export interface ServerToClientEvents {
   "room:joined": (payload: { room: RoomSnapshot; peer: Peer }) => void;
+  "room:join-request": (request: JoinRequest) => void;
+  "room:join-pending": (requestId: string) => void;
+  "room:join-request-cancelled": (requestId: string) => void;
+  "room:host-changed": (hostId: string) => void;
   "room:peer-joined": (peer: Peer) => void;
   "room:peer-left": (peerId: string) => void;
   "room:peer-updated": (peer: Peer) => void;
@@ -59,5 +67,11 @@ export interface ServerToClientEvents {
 export interface RoomSnapshot {
   code: string;
   peers: Peer[];
+  hostId: string;
   screenSharerId: string | null;
+}
+
+export interface JoinRequest {
+  requestId: string;
+  displayName: string;
 }

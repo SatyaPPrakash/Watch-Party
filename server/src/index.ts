@@ -10,13 +10,19 @@ import { ServerToClientEvents, ClientToServerEvents } from "./types/room.js";
 const app = express();
 const httpServer = createServer(app);
 
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+const CLIENT_ORIGINS = (process.env.CLIENT_URL || "http://localhost:5173")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean)
+  .map((value) => new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`).origin);
+
+const corsOptions = { origin: CLIENT_ORIGINS, methods: ["GET", "POST", "DELETE"] };
 
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
-  cors: { origin: CLIENT_URL, methods: ["GET", "POST"] },
+  cors: corsOptions,
 });
 
-app.use(cors({ origin: CLIENT_URL }));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ ok: true }));

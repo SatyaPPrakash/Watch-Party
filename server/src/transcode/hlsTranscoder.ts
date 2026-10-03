@@ -20,13 +20,20 @@ const LEVELS = [
   { height: 360,  bitrate: "600k",  label: "360p"  },
 ];
 
-export function transcodeToHls(opts: TranscodeOptions): () => void {
+export function transcodeToHls(opts: TranscodeOptions): () => Promise<void> {
   const { inputPath, outputDir, onProgress, onReady, onError, onDone } = opts;
 
   fs.mkdirSync(outputDir, { recursive: true });
+  let cancelled = false;
+  const commands: Array<{ kill: (signal?: string) => unknown }> = [];
+  const commandCompletions: Promise<void>[] = [];
+  let finishProbe: () => void = () => {};
+  const probeCompletion = new Promise<void>((resolve) => { finishProbe = resolve; });
 
   // Probe source to skip upscale levels
   ffmpeg.ffprobe(inputPath, (probeErr, metadata) => {
+    finishProbe();
+    if (cancelled) return;
     if (probeErr) return onError(probeErr);
 
     const srcHeight = metadata.streams.find((s) => s.codec_type === "video")?.height ?? 1080;
@@ -39,12 +46,13 @@ export function transcodeToHls(opts: TranscodeOptions): () => void {
     let pending = levels.length;
 
     levels.forEach((level) => {
+      if (cancelled) return;
       const levelDir = path.join(outputDir, level.label);
       fs.mkdirSync(levelDir, { recursive: true });
 
       const playlistPath = path.join(levelDir, "index.m3u8");
 
-      ffmpeg(inputPath)
+      const command = ffmpeg(inputPath)
         .outputOptions([
           `-vf scale=-2:${level.height}`,
           `-c:v libx264`,
@@ -60,10 +68,11 @@ export function transcodeToHls(opts: TranscodeOptions): () => void {
         ])
         .output(playlistPath)
         .on("progress", (p) => {
+          if (cancelled) return;
           onProgress(Math.round(p.percent ?? 0));
         })
         .on("stderr", (line: string) => {
-          if (!readyLevels.has(level.label) && line.includes("seg000.ts")) {
+          if (!cancelled && !readyLevels.has(level.label) && line.includes("seg000.ts")) {
             readyLevels.add(level.label);
             if (readyLevels.size === levels.length) {
               writeMasterPlaylist(outputDir, levels);
@@ -72,19 +81,40 @@ export function transcodeToHls(opts: TranscodeOptions): () => void {
           }
         })
         .on("end", () => {
+          if (cancelled) return;
           pending--;
           if (pending === 0) {
             writeMasterPlaylist(outputDir, levels);
             onDone();
           }
         })
-        .on("error", (err) => onError(err))
-        .run();
+        .on("error", (err) => {
+          if (!cancelled) onError(err);
+        });
+
+      commandCompletions.push(new Promise<void>((resolve) => {
+        command.once("end", resolve);
+        command.once("error", resolve);
+      }));
+      commands.push(command);
+      command.run();
     });
   });
 
-  // Return a cancel function (kills ffmpeg processes — best effort for MVP)
-  return () => {};
+  return async () => {
+    if (!cancelled) {
+      cancelled = true;
+      commands.forEach((command) => {
+        try {
+          command.kill("SIGKILL");
+        } catch {
+          // The command may already have exited.
+        }
+      });
+    }
+    await probeCompletion;
+    await Promise.all(commandCompletions);
+  };
 }
 
 function writeMasterPlaylist(outputDir: string, levels: typeof LEVELS) {

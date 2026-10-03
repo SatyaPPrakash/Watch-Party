@@ -9,7 +9,7 @@ import {
 } from "react";
 import { io, Socket } from "socket.io-client";
 import { NativePeer } from "../webrtc/NativePeer";
-import { Peer, ServerToClientEvents, ClientToServerEvents } from "../types/room";
+import { JoinRequest, Peer, ServerToClientEvents, ClientToServerEvents } from "../types/room";
 import { useError } from "./ErrorContext";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:4000";
@@ -23,6 +23,10 @@ interface RoomContextValue {
   socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
   roomCode: string | null;
   localPeer: Peer | null;
+  hostId: string | null;
+  isHost: boolean;
+  joinRequests: JoinRequest[];
+  joinRequestPending: boolean;
   peers: Peer[];
   localStream: MediaStream | null;
   peerStreams: Map<string, MediaStream>;
@@ -36,6 +40,10 @@ interface RoomContextValue {
   toggleMic: () => void;
   startScreenShare: () => Promise<void>;
   stopScreenShare: () => Promise<void>;
+  leaveRoom: () => void;
+  cancelJoinRequest: () => void;
+  approveJoinRequest: (requestId: string) => void;
+  denyJoinRequest: (requestId: string) => void;
   createRoom: (displayName: string) => Promise<string>;
   joinRoom: (code: string, displayName: string) => Promise<void>;
   onLoadUrl: (cb: (url: string) => void) => () => void;
@@ -51,10 +59,14 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenShareStreamRef = useRef<MediaStream | null>(null);
+  const pendingJoinRequestIdRef = useRef<string | null>(null);
   const peerConnectionsRef = useRef<Map<string, PeerConnection>>(new Map());
 
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [localPeer, setLocalPeer] = useState<Peer | null>(null);
+  const [hostId, setHostId] = useState<string | null>(null);
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [joinRequestPending, setJoinRequestPending] = useState(false);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peerStreams, setPeerStreams] = useState<Map<string, MediaStream>>(new Map());
@@ -136,6 +148,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     (socket: Socket<ServerToClientEvents, ClientToServerEvents>, stream: MediaStream) => {
       socket.on("room:joined", ({ room, peer }) => {
         setRoomCode(room.code);
+        setHostId(room.hostId);
+        pendingJoinRequestIdRef.current = null;
+        setJoinRequestPending(false);
         setScreenSharerId(room.screenSharerId);
         setLocalPeer(peer);
         const others = room.peers.filter((p) => p.id !== peer.id);
@@ -158,6 +173,25 @@ export function RoomProvider({ children }: { children: ReactNode }) {
           next.delete(peerId);
           return next;
         });
+      });
+
+      socket.on("room:join-request", (request) => {
+        setJoinRequests((current) => current.some((item) => item.requestId === request.requestId)
+          ? current
+          : [...current, request]);
+      });
+
+      socket.on("room:join-request-cancelled", (requestId) => {
+        setJoinRequests((current) => current.filter((request) => request.requestId !== requestId));
+      });
+
+      socket.on("room:join-pending", (requestId) => {
+        pendingJoinRequestIdRef.current = requestId;
+        setJoinRequestPending(true);
+      });
+
+      socket.on("room:host-changed", (nextHostId) => {
+        setHostId(nextHostId);
       });
 
       socket.on("room:peer-updated", (updated) => {
@@ -230,9 +264,13 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       return new Promise((resolve, reject) => {
         socket.emit("room:join", { code, displayName }, (err) => {
           if (err) {
-            showError("Couldn't join", err);
+            pendingJoinRequestIdRef.current = null;
+            setJoinRequestPending(false);
+            if (err !== "Join request cancelled.") showError("Couldn't join", err);
             reject(new Error(err));
           } else {
+            pendingJoinRequestIdRef.current = null;
+            setJoinRequestPending(false);
             socket.emit("sync:request-state");
             resolve();
           }
@@ -268,6 +306,47 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     setScreenShareStream(null);
     setScreenSharerId(null);
     socketRef.current?.emit("room:screen-share", false);
+  }, []);
+
+  const leaveRoom = useCallback(() => {
+    screenShareStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    peerConnectionsRef.current.forEach(({ peer }) => peer.destroy());
+    peerConnectionsRef.current.clear();
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+    screenShareStreamRef.current = null;
+    localStreamRef.current = null;
+
+    setRoomCode(null);
+    setLocalPeer(null);
+    setHostId(null);
+    setJoinRequests([]);
+    pendingJoinRequestIdRef.current = null;
+    setJoinRequestPending(false);
+    setPeers([]);
+    setLocalStream(null);
+    setPeerStreams(new Map());
+    setScreenSharerId(null);
+    setScreenShareStream(null);
+    setControllerId(null);
+    setCameraOn(true);
+    setMicOn(true);
+  }, []);
+
+  const cancelJoinRequest = useCallback(() => {
+    const requestId = pendingJoinRequestIdRef.current;
+    if (requestId) socketRef.current?.emit("room:cancel-join", requestId);
+  }, []);
+
+  const approveJoinRequest = useCallback((requestId: string) => {
+    socketRef.current?.emit("room:approve-join", requestId);
+    setJoinRequests((current) => current.filter((request) => request.requestId !== requestId));
+  }, []);
+
+  const denyJoinRequest = useCallback((requestId: string) => {
+    socketRef.current?.emit("room:deny-join", requestId);
+    setJoinRequests((current) => current.filter((request) => request.requestId !== requestId));
   }, []);
 
   const startScreenShare = useCallback(async () => {
@@ -368,6 +447,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         socket: socketRef.current,
         roomCode,
         localPeer,
+        hostId,
+        isHost: !!socketRef.current && hostId === socketRef.current.id,
+        joinRequests,
+        joinRequestPending,
         peers,
         localStream,
         peerStreams,
@@ -381,6 +464,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         toggleMic,
         startScreenShare,
         stopScreenShare,
+        leaveRoom,
+        cancelJoinRequest,
+        approveJoinRequest,
+        denyJoinRequest,
         createRoom,
         joinRoom,
         onLoadUrl,

@@ -10,7 +10,7 @@ interface HomeProps {
 }
 
 export function Home({ onEnterRoom }: HomeProps) {
-  const { createRoom, joinRoom } = useRoom();
+  const { createRoom, joinRoom, joinRequestPending, cancelJoinRequest } = useRoom();
   const { showError } = useError();
 
   const [tab, setTab] = useState<"create" | "join">("create");
@@ -107,7 +107,10 @@ export function Home({ onEnterRoom }: HomeProps) {
               className="w-full mt-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-accent hover:bg-accent-dim text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  {joinRequestPending ? "Waiting for host" : "Joining"}
+                </>
               ) : (
                 <>
                   {tab === "create" ? <Users size={15} /> : <ArrowRight size={15} />}
@@ -115,6 +118,17 @@ export function Home({ onEnterRoom }: HomeProps) {
                 </>
               )}
             </button>
+            {joinRequestPending && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
+                <p className="text-xs text-zinc-400">The host must admit you to the room.</p>
+                <button
+                  onClick={cancelJoinRequest}
+                  className="shrink-0 text-xs font-medium text-zinc-300 transition-colors hover:text-white"
+                >
+                  Cancel request
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

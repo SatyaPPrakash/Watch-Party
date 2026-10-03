@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Play, Pause, Volume2, VolumeX, Maximize } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX } from "lucide-react";
 import { PlaybackAction } from "../types/room";
 
 interface PlayerControlsProps {
@@ -80,12 +80,6 @@ export function PlayerControls({
     seekingRef.current = false;
   }, [videoRef, isController]);
 
-  const handleFullscreen = useCallback(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    document.fullscreenElement ? document.exitFullscreen() : video.requestFullscreen();
-  }, [videoRef]);
-
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
@@ -161,10 +155,6 @@ export function PlayerControls({
             )}
           </div>
         )}
-
-        <button onClick={handleFullscreen} className="text-white/70 hover:text-white transition-colors">
-          <Maximize size={15} />
-        </button>
       </div>
     </div>
   );

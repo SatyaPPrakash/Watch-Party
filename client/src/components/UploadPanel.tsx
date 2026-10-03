@@ -25,12 +25,13 @@ function statusLabel(status: UploadStatus, progress: number): string {
   if (status === "transcoding") return `Transcoding ${progress}%`;
   if (status === "ready") return "Ready to play";
   if (status === "error") return "Failed";
+  if (status === "cancelled") return "Cancelled";
   return "";
 }
 
 export function UploadPanel({ onReady }: UploadPanelProps) {
   const { socket, roomCode } = useRoom();
-  const { status, progress, errorMsg, uploadFile, reset } = useUpload({ socket, roomCode, onReady });
+  const { status, progress, errorMsg, uploadFile, cancelUpload, reset } = useUpload({ socket, roomCode, onReady });
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -48,7 +49,7 @@ export function UploadPanel({ onReady }: UploadPanelProps) {
     handleFile(e.dataTransfer.files[0]);
   }, [handleFile]);
 
-  const isActive = status !== "idle" && status !== "error";
+  const isActive = status === "uploading" || status === "transcoding";
 
   return (
     <div className="flex flex-col gap-2">
@@ -101,7 +102,16 @@ export function UploadPanel({ onReady }: UploadPanelProps) {
               <div className="flex items-center gap-2 shrink-0">
                 <StatusIcon status={status} />
                 <span className="text-xs text-zinc-500">{statusLabel(status, progress)}</span>
-                {!isActive && (
+                {isActive ? (
+                  <button
+                    onClick={cancelUpload}
+                    title="Cancel upload"
+                    aria-label="Cancel upload"
+                    className="rounded-md p-1 text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                  >
+                    <X size={14} />
+                  </button>
+                ) : status !== "idle" && (
                   <button onClick={reset} className="text-zinc-500 hover:text-white transition-colors">
                     <X size={14} />
                   </button>

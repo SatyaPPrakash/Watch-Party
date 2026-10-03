@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Monitor } from "lucide-react";
+import { Maximize, Monitor } from "lucide-react";
 
 interface ScreenShareStageProps {
   stream: MediaStream | null;
@@ -8,7 +8,18 @@ interface ScreenShareStageProps {
 }
 
 export function ScreenShareStage({ stream, displayName, isLocal }: ScreenShareStageProps) {
+  const stageRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const toggleFullscreen = () => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void stage.requestFullscreen();
+    }
+  };
 
   useEffect(() => {
     if (isLocal) return;
@@ -20,7 +31,7 @@ export function ScreenShareStage({ stream, displayName, isLocal }: ScreenShareSt
   }, [stream, isLocal]);
 
   return (
-    <div className="relative mx-auto aspect-video w-full overflow-hidden rounded-xl border border-border bg-black">
+    <div ref={stageRef} className="group relative mx-auto aspect-video w-full overflow-hidden rounded-xl border border-border bg-black">
       {!isLocal && <video ref={videoRef} autoPlay playsInline className="h-full w-full object-contain" />}
       {isLocal && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center text-zinc-300">
@@ -38,6 +49,16 @@ export function ScreenShareStage({ stream, displayName, isLocal }: ScreenShareSt
       <div className="absolute bottom-3 left-3 rounded-lg border border-white/10 bg-black/65 px-3 py-1.5 text-xs text-white backdrop-blur">
         {displayName}{isLocal ? " · sharing your screen" : " · sharing screen"}
       </div>
+      {!isLocal && stream && (
+        <button
+          onClick={toggleFullscreen}
+          title="Fullscreen shared screen"
+          className="absolute right-3 top-3 flex items-center gap-2 rounded-lg border border-white/15 bg-black/65 px-3 py-2 text-xs font-medium text-white opacity-100 backdrop-blur transition-opacity hover:bg-black/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+        >
+          <Maximize size={14} />
+          <span>Fullscreen</span>
+        </button>
+      )}
     </div>
   );
 }
