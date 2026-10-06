@@ -47,6 +47,9 @@ export class NativePeer {
     };
 
     this.pc.onconnectionstatechange = () => {
+      if (this.pc.connectionState === "connected") {
+        void this.configureAudioSender();
+      }
       if (this.pc.connectionState === "failed") {
         this.handlers.error?.(new Error("Connection failed"));
       }
@@ -96,7 +99,19 @@ export class NativePeer {
   replaceTrack(kind: "audio" | "video", track: MediaStreamTrack | null) {
     const sender = this.senders.get(kind);
     if (!sender) return Promise.reject(new Error(`No ${kind} sender is available`));
-    return sender.replaceTrack(track);
+    return sender.replaceTrack(track).then(() => {
+      if (kind === "audio") return this.configureAudioSender();
+    });
+  }
+
+  private async configureAudioSender() {
+    const sender = this.senders.get("audio");
+    if (!sender) return;
+
+    const parameters = sender.getParameters();
+    if (!parameters.encodings.length) return;
+    parameters.encodings[0].maxBitrate = 256_000;
+    await sender.setParameters(parameters).catch(() => {});
   }
 
   on<K extends keyof PeerEvents>(event: K, cb: PeerEvents[K]) {

@@ -369,7 +369,13 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     try {
       presentation = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: 30, max: 30 } },
-        audio: true,
+        audio: {
+          channelCount: { ideal: 2 },
+          sampleRate: { ideal: 48000 },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
       });
     } catch (error) {
       if (error instanceof DOMException && error.name === "NotAllowedError") return;
