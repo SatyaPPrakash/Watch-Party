@@ -50,15 +50,15 @@ export function Room({ onLeaveRoom }: { onLeaveRoom: () => void }) {
       className="min-h-screen bg-surface flex flex-col"
     >
       {/* Header */}
-      <header className="sticky top-0 z-40 flex shrink-0 items-center justify-between border-b border-border bg-surface/95 px-4 py-2.5 backdrop-blur-xl sm:px-6">
-        <div className="flex items-center gap-3">
+      <header className="sticky top-0 z-40 flex shrink-0 flex-wrap items-center justify-between gap-y-2 border-b border-border bg-surface/95 px-3 py-2.5 backdrop-blur-xl sm:flex-nowrap sm:px-6">
+        <div className="flex w-full items-center gap-3 sm:w-auto">
           <Brand />
           <span className="h-4 w-px bg-border" aria-hidden="true" />
           <span className="text-zinc-400 text-xs">
             {totalPeers} {totalPeers === 1 ? "person" : "people"}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center justify-between gap-1.5 sm:w-auto sm:flex-nowrap sm:justify-end sm:gap-2">
           <div className="flex items-center rounded-xl border border-border bg-surface-raised p-1" role="group" aria-label="Participant layout">
             <button
               onClick={() => setTileLayout("tiles")}
@@ -190,7 +190,7 @@ export function Room({ onLeaveRoom }: { onLeaveRoom: () => void }) {
         </div>
       </header>
 
-      <main className={`flex-1 min-h-0 flex flex-col gap-4 p-4 sm:p-6 overflow-y-auto lg:overflow-hidden ${showParticipantSidebar ? "lg:flex-row" : ""}`}>
+      <main className={`flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto p-3 sm:gap-4 sm:p-6 lg:overflow-hidden ${showParticipantSidebar ? "lg:flex-row" : ""}`}>
         <div className={`${showParticipantSidebar ? tileLayout === "tiles" ? "lg:w-[42%] xl:w-[40%]" : "flex-1" : "mx-auto w-full max-w-[1500px]"} min-w-0 shrink-0`}>
           <div className={screenSharerId ? "hidden" : "block"}>
             <VideoShell />

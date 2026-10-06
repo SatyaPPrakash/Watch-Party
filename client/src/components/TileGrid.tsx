@@ -31,7 +31,7 @@ export function TileGrid({ layout, showParticipants = true }: TileGridProps) {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       {showParticipants && (
-        <div className={`grid min-h-0 gap-3 overflow-y-auto pr-1 ${layout === "tiles" ? "flex-1 grid-cols-1 sm:grid-cols-2 content-start" : "grid-cols-1"}`}>
+        <div className={`grid min-h-0 snap-x snap-mandatory grid-flow-col auto-cols-[78%] gap-3 overflow-x-auto scroll-smooth ${layout === "tiles" ? "flex-1 sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-2 sm:content-start sm:overflow-y-auto sm:pr-1" : "sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-1 sm:overflow-y-auto"}`}>
           <AnimatePresence>
             {localPeer && (
               <PeerTile
@@ -39,6 +39,7 @@ export function TileGrid({ layout, showParticipants = true }: TileGridProps) {
                 peer={{ ...localPeer, cameraOn, micOn }}
                 stream={localStream}
                 isLocal
+                screenSharing={screenSharerId === localPeer.id}
               />
             )}
             {peers.map((peer) => (
@@ -46,6 +47,7 @@ export function TileGrid({ layout, showParticipants = true }: TileGridProps) {
                 key={peer.id}
                 peer={peer}
                 stream={peerStreams.get(peer.id) ?? null}
+                screenSharing={screenSharerId === peer.id}
               />
             ))}
           </AnimatePresence>

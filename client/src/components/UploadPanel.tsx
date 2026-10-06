@@ -111,7 +111,7 @@ export function UploadPanel({ onReady }: UploadPanelProps) {
                   >
                     <X size={14} />
                   </button>
-                ) : status !== "idle" && (
+                ) : (
                   <button onClick={reset} className="text-zinc-500 hover:text-white transition-colors">
                     <X size={14} />
                   </button>

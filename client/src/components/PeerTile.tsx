@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { MicOff, VideoOff, Mic, Video } from "lucide-react";
+import { MicOff, VideoOff, Mic, Monitor, Video } from "lucide-react";
 import { Peer } from "../types/room";
 import { useRoom } from "../context/RoomContext";
 
@@ -8,9 +8,10 @@ interface PeerTileProps {
   peer: Peer;
   stream: MediaStream | null;
   isLocal?: boolean;
+  screenSharing?: boolean;
 }
 
-export function PeerTile({ peer, stream, isLocal = false }: PeerTileProps) {
+export function PeerTile({ peer, stream, isLocal = false, screenSharing = false }: PeerTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const { remoteMute, remoteHideCamera } = useRoom();
 
@@ -34,7 +35,13 @@ export function PeerTile({ peer, stream, isLocal = false }: PeerTileProps) {
       className="relative aspect-video w-full bg-surface-raised rounded-xl overflow-hidden border border-border group"
     >
       {/* Video feed */}
-      {peer.cameraOn && stream ? (
+      {screenSharing ? (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-surface-raised px-3 text-center">
+          <Monitor size={22} className="text-emerald-300" />
+          <span className="text-xs font-medium text-zinc-200">Sharing screen</span>
+          <span className="text-[11px] text-zinc-500">Shown in player</span>
+        </div>
+      ) : peer.cameraOn && stream ? (
         <video
           ref={videoRef}
           autoPlay
