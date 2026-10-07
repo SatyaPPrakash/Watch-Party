@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { AnimatePresence } from "framer-motion";
-import { Mic, MicOff, Monitor, StopCircle, Video, VideoOff } from "lucide-react";
+import { Loader2, Mic, MicOff, Monitor, StopCircle, Video, VideoOff } from "lucide-react";
 import { useState } from "react";
 import { useRoom } from "../context/RoomContext";
 import { PeerTile } from "./PeerTile";
@@ -8,15 +8,18 @@ import { PeerTile } from "./PeerTile";
 interface TileGridProps {
   layout: "tiles" | "focus";
   showParticipants?: boolean;
+  focusedPeerId?: string | null;
+  onFocusPeer?: (peerId: string | null) => void;
 }
 
-export function TileGrid({ layout, showParticipants = true }: TileGridProps) {
+export function TileGrid({ layout, showParticipants = true, focusedPeerId = null, onFocusPeer }: TileGridProps) {
   const {
     localPeer,
     peers,
     localStream,
     peerStreams,
     cameraOn,
+    cameraBusy,
     micOn,
     screenSharerId,
     toggleCamera,
@@ -31,23 +34,25 @@ export function TileGrid({ layout, showParticipants = true }: TileGridProps) {
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       {showParticipants && (
-        <div className={`grid min-h-0 snap-x snap-mandatory grid-flow-col auto-cols-[78%] gap-3 overflow-x-auto scroll-smooth ${layout === "tiles" ? "flex-1 sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-2 sm:content-start sm:overflow-y-auto sm:pr-1" : "sm:grid-flow-row sm:auto-cols-auto sm:grid-cols-1 sm:overflow-y-auto"}`}>
+        <div className={`grid min-h-0 grid-cols-2 content-start gap-2 overflow-y-auto pr-1 sm:gap-3 ${layout === "tiles" ? "flex-1" : "sm:grid-cols-1"}`}>
           <AnimatePresence>
-            {localPeer && (
+            {localPeer && localPeer.id !== focusedPeerId && (
               <PeerTile
                 key={localPeer.id}
                 peer={{ ...localPeer, cameraOn, micOn }}
                 stream={localStream}
                 isLocal
                 screenSharing={screenSharerId === localPeer.id}
+                onFocus={onFocusPeer ? () => onFocusPeer(localPeer.id) : undefined}
               />
             )}
-            {peers.map((peer) => (
+            {peers.filter((peer) => peer.id !== focusedPeerId).map((peer) => (
               <PeerTile
                 key={peer.id}
                 peer={peer}
                 stream={peerStreams.get(peer.id) ?? null}
                 screenSharing={screenSharerId === peer.id}
+                onFocus={onFocusPeer ? () => onFocusPeer(peer.id) : undefined}
               />
             ))}
           </AnimatePresence>
@@ -71,14 +76,16 @@ export function TileGrid({ layout, showParticipants = true }: TileGridProps) {
         </button>
         <button
           onClick={toggleCamera}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+          disabled={cameraBusy}
+          title={cameraOn ? "Turn camera off" : "Turn camera on"}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors disabled:cursor-wait disabled:opacity-60 ${
             cameraOn
               ? "bg-surface-raised border-border text-white hover:bg-white/5"
               : "bg-zinc-500/10 border-zinc-500/30 text-zinc-400 hover:bg-zinc-500/20"
           }`}
         >
-          {cameraOn ? <Video size={15} /> : <VideoOff size={15} />}
-          {cameraOn ? "Hide camera" : "Show camera"}
+          {cameraBusy ? <Loader2 size={15} className="animate-spin" /> : cameraOn ? <VideoOff size={15} /> : <Video size={15} />}
+          {cameraBusy ? "Starting camera" : cameraOn ? "Turn camera off" : "Turn camera on"}
         </button>
         <button
           onClick={() => isLocalSharer ? void stopScreenShare() : setShowShareNotice(true)}

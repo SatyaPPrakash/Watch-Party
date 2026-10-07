@@ -25,7 +25,7 @@ export function transcodeToHls(opts: TranscodeOptions): () => Promise<void> {
 
   fs.mkdirSync(outputDir, { recursive: true });
   let cancelled = false;
-  const commands: Array<{ kill: (signal?: string) => unknown }> = [];
+  const commands: Array<{ kill: (signal: string) => unknown }> = [];
   const commandCompletions: Promise<void>[] = [];
   let finishProbe: () => void = () => {};
   const probeCompletion = new Promise<void>((resolve) => { finishProbe = resolve; });

@@ -33,6 +33,7 @@ interface RoomContextValue {
   screenSharerId: string | null;
   screenShareStream: MediaStream | null;
   cameraOn: boolean;
+  cameraBusy: boolean;
   micOn: boolean;
   controllerId: string | null;
   isController: boolean;
@@ -41,6 +42,7 @@ interface RoomContextValue {
   startScreenShare: () => Promise<void>;
   stopScreenShare: () => Promise<void>;
   leaveRoom: () => void;
+  dismissRoom: () => void;
   cancelJoinRequest: () => void;
   approveJoinRequest: (requestId: string) => void;
   denyJoinRequest: (requestId: string) => void;
@@ -59,6 +61,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenShareStreamRef = useRef<MediaStream | null>(null);
+  const cameraBusyRef = useRef(false);
+  const cameraStateBeforeShareRef = useRef<boolean | null>(null);
   const pendingJoinRequestIdRef = useRef<string | null>(null);
   const peerConnectionsRef = useRef<Map<string, PeerConnection>>(new Map());
 
@@ -73,6 +77,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const [screenSharerId, setScreenSharerId] = useState<string | null>(null);
   const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
   const [cameraOn, setCameraOn] = useState(true);
+  const [cameraBusy, setCameraBusy] = useState(false);
   const [micOn, setMicOn] = useState(true);
   const [controllerId, setControllerId] = useState<string | null>(null);
 
@@ -105,7 +110,63 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
     localStreamRef.current = combined;
     setLocalStream(combined);
+    setCameraOn(Boolean(videoStream?.getVideoTracks().length));
+    setMicOn(Boolean(audioStream?.getAudioTracks().length));
     return combined;
+  }, [showError]);
+
+  const setCameraEnabled = useCallback(async (enabled: boolean) => {
+    if (cameraBusyRef.current) return;
+
+    const currentStream = localStreamRef.current;
+    const currentCameraTrack = currentStream?.getVideoTracks()[0] ?? null;
+    if (enabled === Boolean(currentCameraTrack?.enabled)) {
+      setCameraOn(enabled);
+      return;
+    }
+
+    cameraBusyRef.current = true;
+    setCameraBusy(true);
+    let nextCameraTrack: MediaStreamTrack | null = null;
+    try {
+      if (enabled) {
+        const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        nextCameraTrack = cameraStream.getVideoTracks()[0] ?? null;
+        if (!nextCameraTrack) {
+          cameraStream.getTracks().forEach((track) => track.stop());
+          showError("Camera unavailable", "Your camera did not provide a video track.");
+          return;
+        }
+        const nextStream = new MediaStream([
+          ...(currentStream?.getAudioTracks() ?? []),
+          nextCameraTrack,
+        ]);
+        localStreamRef.current = nextStream;
+        setLocalStream(nextStream);
+      } else {
+        currentCameraTrack?.stop();
+        const nextStream = new MediaStream(currentStream?.getAudioTracks() ?? []);
+        localStreamRef.current = nextStream;
+        setLocalStream(nextStream);
+      }
+
+      if (screenShareStreamRef.current) {
+        cameraStateBeforeShareRef.current = enabled;
+      } else {
+        await Promise.all(Array.from(peerConnectionsRef.current.values(), ({ peer }) =>
+          peer.replaceTrack("video", nextCameraTrack).catch(() => {})
+        ));
+      }
+
+      setCameraOn(enabled);
+      socketRef.current?.emit("room:toggle-camera", enabled);
+    } catch {
+      nextCameraTrack?.stop();
+      showError("Camera unavailable", "Allow camera access in your browser settings, then try again.");
+    } finally {
+      cameraBusyRef.current = false;
+      setCameraBusy(false);
+    }
   }, [showError]);
 
   const createPeerConnection = useCallback(
@@ -223,13 +284,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
       });
 
       socket.on("room:your-camera-was-hidden", () => {
-        const s = localStreamRef.current;
-        const track = s?.getVideoTracks()[0];
-        if (track) track.enabled = false;
-        setCameraOn(false);
+        void setCameraEnabled(false);
       });
     },
-    [createPeerConnection, showError]
+    [createPeerConnection, setCameraEnabled, showError]
   );
 
   const createRoom = useCallback(
@@ -295,6 +353,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     screenShareStreamRef.current = null;
     const cameraTrack = localStreamRef.current?.getVideoTracks()[0] ?? null;
     const microphoneTrack = localStreamRef.current?.getAudioTracks()[0] ?? null;
+    const restoreCamera = cameraStateBeforeShareRef.current ?? cameraTrack?.enabled ?? false;
+    cameraStateBeforeShareRef.current = null;
+    if (cameraTrack) cameraTrack.enabled = restoreCamera;
     await Promise.all(Array.from(peerConnectionsRef.current.values(), async ({ peer }) => {
       await Promise.all([
         peer.replaceTrack("video", cameraTrack).catch(() => {}),
@@ -305,7 +366,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     presentation.getTracks().forEach((track) => track.stop());
     setScreenShareStream(null);
     setScreenSharerId(null);
+    setCameraOn(restoreCamera);
     socketRef.current?.emit("room:screen-share", false);
+    socketRef.current?.emit("room:toggle-camera", restoreCamera);
   }, []);
 
   const leaveRoom = useCallback(() => {
@@ -316,6 +379,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     socketRef.current?.disconnect();
     socketRef.current = null;
     screenShareStreamRef.current = null;
+    cameraBusyRef.current = false;
+    cameraStateBeforeShareRef.current = null;
     localStreamRef.current = null;
 
     setRoomCode(null);
@@ -332,6 +397,10 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     setControllerId(null);
     setCameraOn(true);
     setMicOn(true);
+  }, []);
+
+  const dismissRoom = useCallback(() => {
+    socketRef.current?.emit("room:dismiss");
   }, []);
 
   const cancelJoinRequest = useCallback(() => {
@@ -391,6 +460,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     }
 
     screenShareStreamRef.current = presentation;
+    cameraStateBeforeShareRef.current = Boolean(
+      cameraOn && localStreamRef.current?.getVideoTracks()[0]?.enabled
+    );
     setScreenShareStream(presentation);
     const audioTrack = presentation.getAudioTracks()[0];
     if (audioTrack) {
@@ -410,7 +482,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     setScreenSharerId(socket.id);
     socket.emit("room:screen-share", true);
     videoTrack.addEventListener("ended", () => void stopScreenShare(), { once: true });
-  }, [screenSharerId, showError, stopScreenShare]);
+  }, [cameraOn, screenSharerId, showError, stopScreenShare]);
 
   const onLoadUrl = useCallback((cb: (url: string) => void) => {
     const socket = socketRef.current;
@@ -420,14 +492,8 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleCamera = useCallback(() => {
-    const stream = localStreamRef.current;
-    if (!stream) return;
-    const track = stream.getVideoTracks()[0];
-    if (!track) return;
-    track.enabled = !track.enabled;
-    setCameraOn(track.enabled);
-    socketRef.current?.emit("room:toggle-camera", track.enabled);
-  }, []);
+    void setCameraEnabled(!cameraOn);
+  }, [cameraOn, setCameraEnabled]);
 
   const toggleMic = useCallback(() => {
     const track = screenShareStreamRef.current?.getAudioTracks()[0]
@@ -463,6 +529,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         screenSharerId,
         screenShareStream,
         cameraOn,
+        cameraBusy,
         micOn,
         controllerId,
         isController: !!socketRef.current && controllerId === socketRef.current.id,
@@ -471,6 +538,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         startScreenShare,
         stopScreenShare,
         leaveRoom,
+        dismissRoom,
         cancelJoinRequest,
         approveJoinRequest,
         denyJoinRequest,

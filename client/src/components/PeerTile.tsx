@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { MicOff, VideoOff, Mic, Monitor, Video } from "lucide-react";
+import { Maximize2, MicOff, VideoOff, Mic, Minimize2, Monitor, Video } from "lucide-react";
 import { Peer } from "../types/room";
 import { useRoom } from "../context/RoomContext";
 
@@ -9,9 +9,11 @@ interface PeerTileProps {
   stream: MediaStream | null;
   isLocal?: boolean;
   screenSharing?: boolean;
+  onFocus?: () => void;
+  isFocused?: boolean;
 }
 
-export function PeerTile({ peer, stream, isLocal = false, screenSharing = false }: PeerTileProps) {
+export function PeerTile({ peer, stream, isLocal = false, screenSharing = false, onFocus, isFocused = false }: PeerTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const { remoteMute, remoteHideCamera } = useRoom();
 
@@ -34,6 +36,16 @@ export function PeerTile({ peer, stream, isLocal = false, screenSharing = false 
       transition={{ duration: 0.2, ease: "easeOut" }}
       className="relative aspect-video w-full bg-surface-raised rounded-xl overflow-hidden border border-border group"
     >
+      {onFocus && (
+        <button
+          onClick={onFocus}
+          aria-label={isFocused ? `Exit ${peer.displayName} focus` : `Focus ${peer.displayName}`}
+          title={isFocused ? "Exit focus" : "Focus participant"}
+          className="absolute right-2 top-2 z-20 flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-black/65 text-white backdrop-blur transition-colors hover:bg-black/85"
+        >
+          {isFocused ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+        </button>
+      )}
       {/* Video feed */}
       {screenSharing ? (
         <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-surface-raised px-3 text-center">
@@ -47,6 +59,7 @@ export function PeerTile({ peer, stream, isLocal = false, screenSharing = false 
           autoPlay
           playsInline
           muted={isLocal}
+          style={{ transform: "none" }}
           className="w-full h-full object-cover"
         />
       ) : (

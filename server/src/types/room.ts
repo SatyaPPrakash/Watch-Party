@@ -28,6 +28,7 @@ export interface ClientToServerEvents {
   "room:approve-join": (requestId: string) => void;
   "room:deny-join": (requestId: string) => void;
   "room:cancel-join": (requestId: string) => void;
+  "room:dismiss": () => void;
   "room:toggle-camera": (cameraOn: boolean) => void;
   "room:toggle-mic": (micOn: boolean) => void;
   "room:remote-mute": (targetId: string) => void;
@@ -47,6 +48,7 @@ export interface ServerToClientEvents {
   "room:join-pending": (requestId: string) => void;
   "room:join-request-cancelled": (requestId: string) => void;
   "room:host-changed": (hostId: string) => void;
+  "room:closed": () => void;
   "room:peer-joined": (peer: Peer) => void;
   "room:peer-left": (peerId: string) => void;
   "room:peer-updated": (peer: Peer) => void;

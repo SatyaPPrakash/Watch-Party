@@ -137,6 +137,29 @@ export function registerRoomHandlers(
     if (room) io.to(room.hostId).emit("room:join-request-cancelled", requestId);
   });
 
+  socket.on("room:dismiss", () => {
+    const code = socket.data.roomCode;
+    const room = rooms.get(code);
+    if (!room || room.hostId !== socket.id) {
+      socket.emit("room:error", "Only the host can dismiss this room.");
+      return;
+    }
+
+    for (const request of pendingJoinRequests.values()) {
+      if (request.roomCode !== code) continue;
+      clearPendingRequest(request.requestId)?.acknowledge("The host closed the room.");
+    }
+
+    io.to(code).emit("room:closed");
+    for (const peerId of room.peers.keys()) {
+      const peerSocket = io.sockets.sockets.get(peerId);
+      peerSocket?.leave(code);
+      if (peerSocket) peerSocket.data.roomCode = undefined;
+    }
+    rooms.delete(code);
+    clearRoomSyncState(code);
+  });
+
   socket.on("room:toggle-camera", (cameraOn) => {
     const code = socket.data.roomCode;
     const room = rooms.get(code);

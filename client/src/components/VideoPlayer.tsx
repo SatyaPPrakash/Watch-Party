@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
 import Hls from "hls.js";
 import { Link, Loader2, Maximize } from "lucide-react";
 import { useRoom } from "../context/RoomContext";
@@ -122,8 +122,15 @@ export function VideoPlayer() {
     }
   }, []);
 
-  useEffect(() => {
-    return () => { hlsRef.current?.destroy(); };
+  useLayoutEffect(() => {
+    return () => {
+      hlsRef.current?.destroy();
+      const video = videoRef.current;
+      if (!video) return;
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    };
   }, []);
 
   const noVideo = !url;
