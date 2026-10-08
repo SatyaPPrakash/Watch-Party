@@ -34,7 +34,15 @@ export function TileGrid({ layout, showParticipants = true, focusedPeerId = null
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       {showParticipants && (
-        <div className={`grid min-h-0 grid-cols-2 content-start gap-2 overflow-y-auto pr-1 sm:gap-3 ${layout === "tiles" ? "flex-1" : "sm:grid-cols-1"}`}>
+        <div
+          className="grid max-h-[58dvh] min-h-[9rem] flex-1 grid-cols-2 gap-2 overflow-y-auto overscroll-contain pr-1 sm:max-h-full sm:gap-3"
+          style={{
+            gridTemplateColumns: layout === "focus"
+              ? "minmax(0, 1fr)"
+              : "repeat(auto-fit, minmax(min(100%, 15rem), 1fr))",
+            gridAutoRows: "minmax(9rem, 1fr)",
+          }}
+        >
           <AnimatePresence>
             {localPeer && localPeer.id !== focusedPeerId && (
               <PeerTile
@@ -44,6 +52,7 @@ export function TileGrid({ layout, showParticipants = true, focusedPeerId = null
                 isLocal
                 screenSharing={screenSharerId === localPeer.id}
                 onFocus={onFocusPeer ? () => onFocusPeer(localPeer.id) : undefined}
+                fill
               />
             )}
             {peers.filter((peer) => peer.id !== focusedPeerId).map((peer) => (
@@ -53,6 +62,7 @@ export function TileGrid({ layout, showParticipants = true, focusedPeerId = null
                 stream={peerStreams.get(peer.id) ?? null}
                 screenSharing={screenSharerId === peer.id}
                 onFocus={onFocusPeer ? () => onFocusPeer(peer.id) : undefined}
+                fill
               />
             ))}
           </AnimatePresence>
@@ -60,7 +70,7 @@ export function TileGrid({ layout, showParticipants = true, focusedPeerId = null
       )}
 
       {/* Local controls */}
-      <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+      <div className="sticky bottom-0 z-30 -mx-3 flex flex-wrap items-center justify-center gap-2 border-t border-border/70 bg-surface/95 px-3 pb-3 pt-3 backdrop-blur-xl sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-1 sm:backdrop-blur-none">
         <button
           onClick={toggleMic}
           disabled={!hasAudioTrack}

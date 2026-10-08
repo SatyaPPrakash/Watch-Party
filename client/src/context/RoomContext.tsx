@@ -30,6 +30,7 @@ interface RoomContextValue {
   peers: Peer[];
   localStream: MediaStream | null;
   peerStreams: Map<string, MediaStream>;
+  peerScreenStreams: Map<string, MediaStream>;
   screenSharerId: string | null;
   screenShareStream: MediaStream | null;
   cameraOn: boolean;
@@ -74,6 +75,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
   const [peers, setPeers] = useState<Peer[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peerStreams, setPeerStreams] = useState<Map<string, MediaStream>>(new Map());
+  const [peerScreenStreams, setPeerScreenStreams] = useState<Map<string, MediaStream>>(new Map());
   const [screenSharerId, setScreenSharerId] = useState<string | null>(null);
   const [screenShareStream, setScreenShareStream] = useState<MediaStream | null>(null);
   const [cameraOn, setCameraOn] = useState(true);
@@ -171,20 +173,27 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
   const createPeerConnection = useCallback(
     (peerId: string, initiator: boolean, stream: MediaStream) => {
-      const presentation = screenShareStreamRef.current;
       const outgoingStream = new MediaStream();
-      const videoTrack = presentation?.getVideoTracks()[0] ?? stream.getVideoTracks()[0];
-      const audioTrack = presentation?.getAudioTracks()[0] ?? stream.getAudioTracks()[0];
+      const videoTrack = stream.getVideoTracks()[0];
+      const audioTrack = stream.getAudioTracks()[0];
       if (videoTrack) outgoingStream.addTrack(videoTrack);
       if (audioTrack) outgoingStream.addTrack(audioTrack);
-      const peer = new NativePeer({ initiator, stream: outgoingStream });
+      const peer = new NativePeer({
+        initiator,
+        stream: outgoingStream,
+        screenTrack: screenShareStreamRef.current?.getVideoTracks()[0] ?? null,
+      });
 
       peer.on("signal", (signal) => {
         socketRef.current?.emit("signal", { to: peerId, signal });
       });
 
-      peer.on("stream", (remoteStream) => {
-        setPeerStreams((prev) => new Map(prev).set(peerId, remoteStream));
+      peer.on("stream", (remoteStream, source) => {
+        if (source === "screen") {
+          setPeerScreenStreams((prev) => new Map(prev).set(peerId, remoteStream));
+        } else {
+          setPeerStreams((prev) => new Map(prev).set(peerId, remoteStream));
+        }
       });
 
       peer.on("error", (err) => {
@@ -193,6 +202,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
       peer.on("close", () => {
         setPeerStreams((prev) => {
+          const next = new Map(prev);
+          next.delete(peerId);
+          return next;
+        });
+        setPeerScreenStreams((prev) => {
           const next = new Map(prev);
           next.delete(peerId);
           return next;
@@ -230,6 +244,11 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         peerConnectionsRef.current.get(peerId)?.peer.destroy();
         peerConnectionsRef.current.delete(peerId);
         setPeerStreams((prev) => {
+          const next = new Map(prev);
+          next.delete(peerId);
+          return next;
+        });
+        setPeerScreenStreams((prev) => {
           const next = new Map(prev);
           next.delete(peerId);
           return next;
@@ -357,9 +376,9 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     cameraStateBeforeShareRef.current = null;
     if (cameraTrack) cameraTrack.enabled = restoreCamera;
     await Promise.all(Array.from(peerConnectionsRef.current.values(), async ({ peer }) => {
-      await Promise.all([
-        peer.replaceTrack("video", cameraTrack).catch(() => {}),
-        peer.replaceTrack("audio", microphoneTrack).catch(() => {}),
+        await Promise.all([
+          peer.replaceTrack("screen", null).catch(() => {}),
+          peer.replaceTrack("audio", microphoneTrack).catch(() => {}),
       ]);
     }));
 
@@ -392,6 +411,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     setPeers([]);
     setLocalStream(null);
     setPeerStreams(new Map());
+    setPeerScreenStreams(new Map());
     setScreenSharerId(null);
     setScreenShareStream(null);
     setControllerId(null);
@@ -470,7 +490,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     }
     try {
       await Promise.all(Array.from(peerConnectionsRef.current.values(), async ({ peer }) => {
-        await peer.replaceTrack("video", videoTrack);
+        await peer.replaceTrack("screen", videoTrack);
         if (audioTrack) await peer.replaceTrack("audio", audioTrack);
       }));
     } catch {
@@ -526,6 +546,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         peers,
         localStream,
         peerStreams,
+          peerScreenStreams,
         screenSharerId,
         screenShareStream,
         cameraOn,

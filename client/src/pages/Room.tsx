@@ -16,6 +16,7 @@ export function Room({ onLeaveRoom }: { onLeaveRoom: () => void }) {
     localPeer,
     localStream,
     peerStreams,
+    peerScreenStreams,
     screenSharerId,
     screenShareStream,
     cameraOn,
@@ -60,12 +61,16 @@ export function Room({ onLeaveRoom }: { onLeaveRoom: () => void }) {
     ? localPeer ? { ...localPeer, cameraOn, micOn } : null
     : peers.find((peer) => peer.id === focusedPeerId) ?? null;
   const focusedStream = focusedPeerId === localPeer?.id
-    ? localStream
-    : focusedPeerId ? peerStreams.get(focusedPeerId) ?? null : null;
+    ? screenSharerId === localPeer.id ? screenShareStream : localStream
+    : focusedPeerId
+      ? screenSharerId === focusedPeerId
+        ? peerScreenStreams.get(focusedPeerId) ?? null
+        : peerStreams.get(focusedPeerId) ?? null
+      : null;
   const focusedIsScreenSharer = !!focusedPeerId && screenSharerId === focusedPeerId;
   const sharedStream = screenSharerId === localPeer?.id
     ? screenShareStream
-    : screenSharerId ? peerStreams.get(screenSharerId) ?? null : null;
+    : screenSharerId ? peerScreenStreams.get(screenSharerId) ?? null : null;
   const showParticipantSidebar = !cineMode && (!screenSharerId || showPeopleWhileSharing);
   const hasJoinRequests = isHost && joinRequests.length > 0;
 
@@ -289,7 +294,7 @@ export function Room({ onLeaveRoom }: { onLeaveRoom: () => void }) {
         )}
 
         {focusedPeer && (
-          <div className="relative mx-auto w-full min-w-0 flex-1 lg:mx-0">
+          <div className="relative mx-auto aspect-video w-full min-w-0 lg:mx-0 lg:aspect-auto lg:flex-1 lg:min-h-0">
             {focusedIsScreenSharer ? (
               <>
                 <ScreenShareStage
@@ -313,6 +318,7 @@ export function Room({ onLeaveRoom }: { onLeaveRoom: () => void }) {
                 isLocal={focusedPeer.id === localPeer?.id}
                 isFocused
                 onFocus={() => setFocusedPeerId(null)}
+                fill
               />
             )}
           </div>

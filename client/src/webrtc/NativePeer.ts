@@ -5,7 +5,7 @@ const ICE_SERVERS: RTCIceServer[] = [
 
 type PeerEvents = {
   signal: (data: unknown) => void;
-  stream: (stream: MediaStream) => void;
+  stream: (stream: MediaStream, source: "camera" | "screen") => void;
   error: (err: Error) => void;
   close: () => void;
   connect: () => void;
@@ -16,27 +16,47 @@ export class NativePeer {
   private initiator: boolean;
   private handlers: Partial<PeerEvents> = {};
   private destroyed = false;
-  private senders = new Map<"audio" | "video", RTCRtpSender>();
-  private remoteStream = new MediaStream();
+  private senders = new Map<"audio" | "video" | "screen", RTCRtpSender>();
+  private streamSources = new Map<RTCRtpReceiver, "camera" | "screen">();
+  private remoteStreams = new Map<"camera" | "screen", MediaStream>([
+    ["camera", new MediaStream()],
+    ["screen", new MediaStream()],
+  ]);
 
-  constructor(opts: { initiator: boolean; stream?: MediaStream }) {
+  constructor(opts: { initiator: boolean; stream?: MediaStream; screenTrack?: MediaStreamTrack | null }) {
     this.initiator = opts.initiator;
     this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-    for (const kind of ["audio", "video"] as const) {
-      const track = opts.stream?.getTracks().find((candidate) => candidate.kind === kind);
-      const sender = track && opts.stream
-        ? this.pc.addTrack(track, opts.stream)
-        : this.pc.addTransceiver(kind, { direction: "sendrecv" }).sender;
-      this.senders.set(kind, sender);
-    }
+    const audioTrack = opts.stream?.getAudioTracks()[0] ?? null;
+    const cameraTrack = opts.stream?.getVideoTracks()[0] ?? null;
+    const cameraStream = opts.stream ?? new MediaStream();
+    const audioSender = this.pc.addTransceiver(audioTrack ?? "audio", {
+      direction: "sendrecv",
+      streams: audioTrack ? [cameraStream] : [],
+    }).sender;
+    const cameraTransceiver = this.pc.addTransceiver(cameraTrack ?? "video", {
+      direction: "sendrecv",
+      streams: cameraTrack ? [cameraStream] : [],
+    });
+    const screenStream = opts.screenTrack ? new MediaStream([opts.screenTrack]) : null;
+    const screenTransceiver = this.pc.addTransceiver(opts.screenTrack ?? "video", {
+      direction: "sendrecv",
+      streams: screenStream ? [screenStream] : [],
+    });
+
+    this.senders.set("audio", audioSender);
+    this.senders.set("video", cameraTransceiver.sender);
+    this.senders.set("screen", screenTransceiver.sender);
+    this.streamSources.set(cameraTransceiver.receiver, "camera");
+    this.streamSources.set(screenTransceiver.receiver, "screen");
 
     this.pc.ontrack = (event) => {
-      const stream = event.streams[0] ?? this.remoteStream;
+      const source = this.streamSources.get(event.receiver) ?? "camera";
+      const stream = event.streams[0] ?? this.remoteStreams.get(source)!;
       if (!event.streams[0] && !stream.getTracks().some((track) => track.id === event.track.id)) {
         stream.addTrack(event.track);
       }
-      this.handlers.stream?.(stream);
+      this.handlers.stream?.(stream, source);
     };
 
     // ICE candidate → send as signal
@@ -96,7 +116,7 @@ export class NativePeer {
     }
   }
 
-  replaceTrack(kind: "audio" | "video", track: MediaStreamTrack | null) {
+  replaceTrack(kind: "audio" | "video" | "screen", track: MediaStreamTrack | null) {
     const sender = this.senders.get(kind);
     if (!sender) return Promise.reject(new Error(`No ${kind} sender is available`));
     return sender.replaceTrack(track).then(() => {

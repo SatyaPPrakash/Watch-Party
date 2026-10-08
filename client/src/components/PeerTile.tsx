@@ -11,9 +11,10 @@ interface PeerTileProps {
   screenSharing?: boolean;
   onFocus?: () => void;
   isFocused?: boolean;
+  fill?: boolean;
 }
 
-export function PeerTile({ peer, stream, isLocal = false, screenSharing = false, onFocus, isFocused = false }: PeerTileProps) {
+export function PeerTile({ peer, stream, isLocal = false, screenSharing = false, onFocus, isFocused = false, fill = false }: PeerTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const { remoteMute, remoteHideCamera } = useRoom();
 
@@ -34,7 +35,7 @@ export function PeerTile({ peer, stream, isLocal = false, screenSharing = false,
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="relative aspect-video w-full bg-surface-raised rounded-xl overflow-hidden border border-border group"
+      className={`group relative min-w-0 overflow-hidden rounded-xl border border-border bg-surface-raised ${fill ? "h-full min-h-[9rem]" : "aspect-video min-h-[9rem] min-w-[15rem]"}`}
     >
       {onFocus && (
         <button
@@ -47,13 +48,7 @@ export function PeerTile({ peer, stream, isLocal = false, screenSharing = false,
         </button>
       )}
       {/* Video feed */}
-      {screenSharing ? (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-surface-raised px-3 text-center">
-          <Monitor size={22} className="text-emerald-300" />
-          <span className="text-xs font-medium text-zinc-200">Sharing screen</span>
-          <span className="text-[11px] text-zinc-500">Shown in player</span>
-        </div>
-      ) : peer.cameraOn && stream ? (
+      {peer.cameraOn && stream ? (
         <video
           ref={videoRef}
           autoPlay
@@ -70,6 +65,13 @@ export function PeerTile({ peer, stream, isLocal = false, screenSharing = false,
             </div>
             <span className="text-xs text-zinc-500">{peer.displayName}</span>
           </div>
+        </div>
+      )}
+
+      {screenSharing && (
+        <div className="absolute left-2 top-2 flex items-center gap-1.5 rounded-md border border-emerald-300/20 bg-black/65 px-2 py-1 text-[10px] font-medium text-emerald-200 backdrop-blur">
+          <Monitor size={12} />
+          <span>Sharing screen</span>
         </div>
       )}
 
